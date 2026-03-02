@@ -1,4 +1,4 @@
-// Read from serial port in non-canonical mode
+// Write to serial port in non-canonical mode
 //
 // Modified by: Eduardo Nuno Almeida [enalmeida@fe.up.pt]
 
@@ -38,9 +38,10 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    // Open serial port device for reading and writing and not as controlling tty
+    // Open serial port device for reading and writing, and not as controlling tty
     // because we don't want to get killed if linenoise sends CTRL-C.
     int fd = open(serialPortName, O_RDWR | O_NOCTTY);
+
     if (fd < 0)
     {
         perror(serialPortName);
@@ -88,29 +89,34 @@ int main(int argc, char *argv[])
 
     printf("New termios structure set\n");
 
-    // Loop for input
-    unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
+    // Create string to send
+    unsigned char buf[BUF_SIZE] = {0};
 
-    while (STOP == FALSE)
-    {
-        // Returns after 5 chars have been input
-        int bytes = read(fd, buf, BUF_SIZE);
-        buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
-        printf("var = 0x%02X\n", buf[0]);
-        printf("var = 0x%02X\n", buf[1]);
-        printf("var = 0x%02X\n", buf[2]);
-        printf("var = 0x%02X\n", buf[3]);
-        printf("var = 0x%02X\n", buf[4]);
-       // printf(":0x%02X:%d\n", buf, bytes);
-        /* if (buf[0] == 'z')
-             */STOP = TRUE;
+    /*for(int i = 0; i < BUF_SIZE; i++){
+        buf[i] = 'a' + i % 26;
+    }*/
+
+    buf[0] = 0x7E;
+    buf[1] = 0x03;
+    buf[2] = 0x03;
+    buf[3] = buf[1] ^ buf[2];
+    buf[4] = 0x7E;
+
+    for(int i = 0; i < 5; i++){
+        printf("buf[%d] = 0x%02X\n", i, buf[i]);
     }
 
-    // The while() cycle should be changed in order to respect the specifications
-    // of the protocol indicated in the Lab guide
+    // In non-canonical mode, '\n' does not end the writing.
+    // Test this condition by placing a '\n' in the middle of the buffer.
+    // The whole buffer must be sent even with the '\n'.
+    buf[5] = '\n';
 
+    int bytes = write(fd, buf, BUF_SIZE);
+    printf("%d bytes written\n", bytes);
 
+    // Wait until all bytes have been written to the serial port
     sleep(1);
+
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
     {
