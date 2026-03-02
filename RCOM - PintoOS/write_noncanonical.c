@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
+//#include <signal.h>
 
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
@@ -20,6 +21,22 @@
 #define TRUE 1
 
 #define BUF_SIZE 256
+
+
+
+int alarmCount = 0;
+int alarmEnabled = FALSE;
+
+void alarmHandler(int signal, const int fd, const unsigned char buf[])
+{
+    alarmEnabled = FALSE;
+    alarmCount++;
+
+    printf("Alarm #%d received\n", alarmCount);
+
+    int bytes = write(fd, buf, BUF_SIZE);
+    printf("%d bytes written\n", bytes);
+}
 
 volatile int STOP = FALSE;
 
@@ -47,7 +64,7 @@ int main(int argc, char *argv[])
         perror(serialPortName);
         exit(-1);
     }
-
+    
     struct termios oldtio;
     struct termios newtio;
 
@@ -67,8 +84,8 @@ int main(int argc, char *argv[])
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
+    newtio.c_cc[VTIME] = 30; // Inter-character timer unused
+    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -90,7 +107,8 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Create string to send
-    unsigned char buf[BUF_SIZE] = {0};
+    unsigned char buf[BUF_SIZE + 1] = {0};
+    unsigned char buf2[BUF_SIZE + 1] = {0};
 
     /*for(int i = 0; i < BUF_SIZE; i++){
         buf[i] = 'a' + i % 26;
@@ -102,20 +120,71 @@ int main(int argc, char *argv[])
     buf[3] = buf[1] ^ buf[2];
     buf[4] = 0x7E;
 
-    for(int i = 0; i < 5; i++){
-        printf("buf[%d] = 0x%02X\n", i, buf[i]);
-    }
-
-    // In non-canonical mode, '\n' does not end the writing.
-    // Test this condition by placing a '\n' in the middle of the buffer.
-    // The whole buffer must be sent even with the '\n'.
+    
+    //for(int i = 0; i < 5; i++){
+        //    printf("buf[%d] = 0x%02X\n", i, buf[i]);
+        //}
+        
+        // In non-canonical mode, '\n' does not end the writing.
+        // Test this condition by placing a '\n' in the middle of the buffer.
+        // The whole buffer must be sent even with the '\n'.
+    
     buf[5] = '\n';
-
+        
+    for (int i=0; i< BUF_SIZE +1; i++)
+    {
+        buf2[i] = buf[i];
+    }
     int bytes = write(fd, buf, BUF_SIZE);
     printf("%d bytes written\n", bytes);
 
     // Wait until all bytes have been written to the serial port
     sleep(1);
+
+    //UA
+    struct sigaction act = {0};
+    act.sa_handler = &alarmHandler;
+
+    if (sigaction(SIGALRM, &act, NULL) == -1)
+    {
+        perror("sigaction");
+        exit(1);
+    }
+
+    while (STOP == FALSE)
+    {
+        // Returns after 5 chars have been input    
+
+        while (alarmCount < 3)
+        {
+            bytes = read(fd, buf2, BUF_SIZE);
+
+        }
+        
+        buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
+        
+        
+        //DEBUG
+        // for(int i = 0; i < 5; i++){
+        //     printf("var%d = 0x%02X\n", i, buf[i]);
+        // }
+        //printf(":%s:%d\n", buf, bytes);
+        //printf("var1 = 0x%02X\n", buf[1]);
+        //printf("var2 = 0x%02X\n", buf[2]);
+        
+        //UA
+        if (buf[1] == 0x01 && buf[2] == 0x07)
+        {
+            printf("Mass age good recipt!");
+            STOP = TRUE;
+        }
+
+        //alarmHandler();
+
+
+        //if (buf[0] == 'z')
+        //    STOP = TRUE;
+    }
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)

@@ -97,12 +97,15 @@ int main(int argc, char *argv[])
         int bytes = read(fd, buf, BUF_SIZE);
         buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
 
+
+        
+        //DEBUG
         for(int i = 0; i < 5; i++){
             printf("var%d = 0x%02X\n", i, buf[i]);
         }
         //printf(":%s:%d\n", buf, bytes);
 
-        if (buf[0] == 'z')
+        // if (buf[0] == 'z')
             STOP = TRUE;
     }
 
