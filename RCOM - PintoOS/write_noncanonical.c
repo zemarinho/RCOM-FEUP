@@ -22,21 +22,48 @@
 
 #define BUF_SIZE 256
 
+#define FLAG = 0x7E
+#define MY_ADRESS = 0x03
+#define NOT_MY_ADRESS = 0x01
+#define C_SET = 0x03
+#define C_UA = 0x07
 
-
-int alarmCount = 0;
-int alarmEnabled = FALSE;
-
-void alarmHandler(int signal, const int fd, const unsigned char buf[])
+typedef enum
 {
-    alarmEnabled = FALSE;
-    alarmCount++;
+    SIGA,
+    FLAG_SND,
+    ADRESS,
+    CONTROL,
+    BCC,
+    PAROU_CARAI
+    
+} State;
 
-    printf("Alarm #%d received\n", alarmCount);
+int     //return 1 se lido, 0 se não leu nada
+readRead(int fd, unsigned char *buf)
+{
+    int alarmCount = 0;
+    while (alarmCount < 3)
+    {
+        //printf("test clock\n");
+        int bytes;
+        bytes = read(fd, buf, 1);
+        if(bytes == 0){
+            alarmCount++;
+            printf("nao a a panhei");
+            return 1;
+        }
+        else{
+            printf("a panhei %d bytes\n", bytes);
+            for(int i = 0; i < 5; i++){
+                printf("buf2[%d] = 0x%02X\n", i, buf[i]);
+            }
+            return 0;
+        }
+    }
 
-    int bytes = write(fd, buf, BUF_SIZE);
-    printf("%d bytes written\n", bytes);
 }
+
 
 volatile int STOP = FALSE;
 
@@ -142,28 +169,52 @@ int main(int argc, char *argv[])
     sleep(1);
 
     //UA
-    struct sigaction act = {0};
+    /*struct sigaction act = {0};
     act.sa_handler = &alarmHandler;
 
     if (sigaction(SIGALRM, &act, NULL) == -1)
     {
         perror("sigaction");
         exit(1);
-    }
+    }*/
+
+    State state = SIGA;
 
     while (STOP == FALSE)
     {
+        
+
+        readRead(fd, buf);
         // Returns after 5 chars have been input    
+        printf("analyzing\n");
 
-        while (alarmCount < 3)
-        {
-            bytes = read(fd, buf2, BUF_SIZE);
-
-        }
-        
         buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
+        switch (state)
+        {
+        case SIGA:
+            
+            break;
         
-        
+        case FLAG_SND:
+            
+            break;
+            
+        case ADRESS:
+            
+            break;
+
+        case CONTROL:
+            
+            break;
+
+        case BCC:
+            
+            break;
+
+        case PAROU_CARAI:
+
+            break;
+        }
         //DEBUG
         // for(int i = 0; i < 5; i++){
         //     printf("var%d = 0x%02X\n", i, buf[i]);
@@ -173,11 +224,12 @@ int main(int argc, char *argv[])
         //printf("var2 = 0x%02X\n", buf[2]);
         
         //UA
-        if (buf[1] == 0x01 && buf[2] == 0x07)
-        {
-            printf("Mass age good recipt!");
-            STOP = TRUE;
-        }
+        if (buf2[1] == 0x01 && buf2[2] == 0x07)
+            printf("Mass age good recipt!\n");
+        else
+            printf("bed mass age\n");
+
+        STOP = TRUE;
 
         //alarmHandler();
 
