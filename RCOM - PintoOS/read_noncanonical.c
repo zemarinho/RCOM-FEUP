@@ -21,7 +21,21 @@
 
 #define BUF_SIZE 256
 
+#define FLAG 0x7E
+#define A_T2R 0x03
+#define A_R2T 0x01
+#define C_SET 0x03
+#define C_UA 0x07
+
 volatile int STOP = FALSE;
+
+typedef enum{
+    START,
+    FLAG_RCV,
+    A_RCV,
+    C_RCV,
+    BCC_OK
+} receiverState;
 
 int main(int argc, char *argv[])
 {
@@ -66,8 +80,8 @@ int main(int argc, char *argv[])
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
+    newtio.c_cc[VTIME] = 30; // Inter-character timer unused
+    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -88,30 +102,138 @@ int main(int argc, char *argv[])
 
     printf("New termios structure set\n");
 
+    receiverState recState = START;
+    int tries = 0;
+
     // Loop for input
     unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
+    unsigned char readChar = 0;
 
-    while (STOP == FALSE)
-    {
+    while (STOP == FALSE && read(fd, &readChar, 1) > 0){
         // Returns after 5 chars have been input
-        int bytes = read(fd, buf, BUF_SIZE);
-        buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
+        //int bytes = read(fd, buf, BUF_SIZE);
+        //buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
 
-
-        
-        //DEBUG
-        for(int i = 0; i < 5; i++){
-            printf("var%d = 0x%02X\n", i, buf[i]);
-        }
+        printf("Received 0x%02X\n", readChar);
+        /*for(int i = 0; i < 5; i++){
+            printf("buf[%d] = 0x%02X\n", i, buf[i]);
+        }*/
         //printf(":%s:%d\n", buf, bytes);
 
-        // if (buf[0] == 'z')
-            STOP = TRUE;
+        switch(recState)
+            case START:
+                printf("START\n");
+                if(readChar == FLAG)
+                    recState = FLAG_RCV;
+                break;
+
+            case FLAG_RCV:
+                printf("FLAG_RCV\n");
+                if(readChar == A_T2R)
+                    recState = A_RCV;
+                else if (readChar != FLAG)
+                    recState = START;
+                break;
+
+            case A_RCV:
+                printf("A_RCV\n");
+                if(readChar == C_SET)
+                    recState = C_RCV;
+                else if(readChar == FLAG)
+                    recState = FLAG_RCV;
+                else
+                    recState = START;
+                break;
+
+            case C_RCV:
+                printf("C_RCV\n");
+                if(readChar == A_T2R ^ C_SET)
+                    recState = BCC_OK;
+                else if(readChar == FLAG)
+                    recState = FLAG_RCV;
+                else
+                    recState = START;
+                break;
+
+            case BCC_OK:
+                printf("BCC_OK\n");
+                if(readChar == FLAG){
+                    buf[0] = buf[4] = readChar;
+                    STOP = TRUE;
+                }
+                else
+                    recState = START;
+                break;
+/*
+        if(recState == START){
+            printf("START\n");
+            if(readChar == FLAG)
+                recState = FLAG_RCV;
+        }
+
+        if(recState == FLAG_RCV){
+            printf("FLAG_RCV\n");
+            if(readChar == A_T2R)
+                recState = A_RCV;
+            else if (readChar != FLAG)
+                recState = START;
+        }
+
+        if(recState == A_RCV){
+            printf("A_RCV\n");
+            if(readChar == C_SET)
+                recState = C_RCV;
+            else if(readChar == FLAG)
+                recState = FLAG_RCV;
+            else
+                recState = START;
+        }
+
+        if(recState == C_RCV){
+            printf("C_RCV\n");
+            if(readChar == A_T2R ^ C_SET)
+                recState = BCC_OK;
+            else if(readChar == FLAG)
+                recState = FLAG_RCV;
+            else
+                recState = START;
+        }
+
+        if(recState == BCC_OK){
+            printf("BCC_OK\n");
+            if(readChar == FLAG){
+                buf[0] = buf[4] = readChar;
+                STOP = TRUE;
+            }
+            else
+                recState = START;
+        }
+*/
+        /*if (buf[0] == 'z')*/
+        //    STOP = TRUE;
     }
+    printf("STOP\n");
+
+    // UA
+    buf[1] = A_R2T;
+    buf[2] = C_UA;
+    buf[3] = buf[1] ^ buf[2];
+    buf[5] = '\0';
+
+    printf("Acknowledging\n");
+    for(int i = 0; i < 5; i++){
+        printf("buf[%d] = 0x%02X\n", i, buf[i]);
+    }
+
+    printf("%d bytes written back\n", (int) write(fd, buf, BUF_SIZE));
 
     // The while() cycle should be changed in order to respect the specifications
     // of the protocol indicated in the Lab guide
 
+
+
+    sleep(1);
+    
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
     {
