@@ -184,7 +184,7 @@ int main(int argc, char *argv[])
     {
         
 
-        readRead(fd, buf);
+        //readRead(fd, buf);
         // Returns after 5 chars have been input    
         printf("analyzing\n");
 
@@ -192,7 +192,11 @@ int main(int argc, char *argv[])
         switch (state)
         {
         case SIGA:
-            
+            if (readRead(fd, buf);){
+
+        
+            }
+
             break;
         
         case FLAG_SND:
