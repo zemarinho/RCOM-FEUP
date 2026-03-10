@@ -120,7 +120,7 @@ int main(int argc, char *argv[])
         }*/
         //printf(":%s:%d\n", buf, bytes);
 
-        switch(recState)
+        switch(recState){
             case START:
                 printf("START\n");
                 if(readChar == FLAG)
@@ -164,6 +164,7 @@ int main(int argc, char *argv[])
                 else
                     recState = START;
                 break;
+        }
 /*
         if(recState == START){
             printf("START\n");
