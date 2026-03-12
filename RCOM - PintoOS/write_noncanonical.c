@@ -31,7 +31,7 @@
 typedef enum
 {
     SIGA,
-    FLAG_SND,
+    FLAG_RCV,
     ADRESS,
     CONTROL,
     BCC,
@@ -189,36 +189,43 @@ int main(int argc, char *argv[])
         printf("analyzing\n");
 
         buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
-        switch (state)
+
+        if (read(fd, &buf, 1) > 0)
         {
-        case SIGA:
-            if (readRead(fd, buf);){
+            switch (state)
+            {
+                case SIGA:
+                    printf("SIGA");
+                    if (buf == FLAG)
+                        state = FLAG_RCV;
+                    break;
 
-        
+                case FLAG_RCV:
+                    print("FLAG_RCV");
+                    if (buf = )
+                    break;
+
+                case ADRESS:
+
+                    break;
+
+                case CONTROL:
+
+                    break;
+
+                case BCC:
+
+                    break;
+
+                case PAROU_CARAI:
+
+                    break;
             }
-
-            break;
-        
-        case FLAG_SND:
-            
-            break;
-            
-        case ADRESS:
-            
-            break;
-
-        case CONTROL:
-            
-            break;
-
-        case BCC:
-            
-            break;
-
-        case PAROU_CARAI:
-
-            break;
         }
+
+
+
+
         //DEBUG
         // for(int i = 0; i < 5; i++){
         //     printf("var%d = 0x%02X\n", i, buf[i]);
