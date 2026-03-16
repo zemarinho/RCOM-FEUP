@@ -1,15 +1,14 @@
-// Write to serial port in non-canonical mode
+// Read from serial port in non-canonical mode
 //
 // Modified by: Eduardo Nuno Almeida [enalmeida@fe.up.pt]
 
 #include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <termios.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h>
 
 // Baudrate settings are defined in <asm/termbits.h>, which is
@@ -21,20 +20,8 @@
 #define TRUE 1
 
 #define BUF_SIZE 5
-#define SIGALRM 14
 
 volatile int STOP = FALSE;
-
-int alarmEnabled = FALSE;
-int alarmCount = 0;
-
-void alarmHandler(int signal)
-{
-    alarmEnabled = FALSE;
-    alarmCount++;
-
-    printf("Alarm #%d received\n", alarmCount);
-}
 
 int main(int argc, char *argv[])
 {
@@ -51,10 +38,9 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    // Open serial port device for reading and writing, and not as controlling tty
+    // Open serial port device for reading and writing and not as controlling tty
     // because we don't want to get killed if linenoise sends CTRL-C.
     int fd = open(serialPortName, O_RDWR | O_NOCTTY);
-
     if (fd < 0)
     {
         perror(serialPortName);
@@ -102,64 +88,31 @@ int main(int argc, char *argv[])
 
     printf("New termios structure set\n");
 
-    unsigned char A = 0x03, C=0x03;
-    unsigned char BCC = A ^ C;
-    unsigned char buf[BUF_SIZE] = {0x7E, 0x03, 0x03, BCC, 0x7E};
+    // Loop for input
+    unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
+    //while (STOP == FALSE)
+    //{
+        // Returns after 5 chars have been input
+        int bytes = read(fd, buf, BUF_SIZE);
+        buf[5] = '\0'; // Set end of string to '\0', so we can printf
 
-    // In non-canonical mode, '\n' does not end the writing.
-    // Test this condition by placing a '\n' in the middle of the buffer.
-    // The whole buffer must be sent even with the '\n'.
-    buf[5] = '\n';
-
-    struct sigaction act = {0};
-    act.sa_handler = &alarmHandler;
-    if (sigaction(SIGALRM, &act, NULL) == -1)
+    for(int i=0; i<bytes;i++)
     {
-        perror("sigaction");
-        exit(1);
+        printf("SET = 0x%02X\n", buf[i]);
     }
+    sleep(1);
 
-    printf("Alarm configured\n");
+    unsigned char A=0x01, C=0x07, BCC=A^C;
+    unsigned char buf2[BUF_SIZE] = {0x7E, 0x01, 0x07, BCC, 0x7E};
+    int bytes2 =write(fd, buf2, BUF_SIZE);
+    printf("%d bytes written\n", bytes2);
+sleep(1);
 
-    while (alarmCount < 4)
-    {
-        if (alarmEnabled == FALSE)
-        {
-        
-        int bytes = write(fd, buf, BUF_SIZE);
-        alarm(3); // Set alarm to be triggered in 3s
-        
-        
-        for (int i = 0; i < bytes; i++)
-        {
-            printf("0x%02X\n", buf[i]);
-        }
-        }
 
-        
-        alarmEnabled = TRUE;
-        unsigned char buf2[BUF_SIZE] = {0}; 
-        //bytes= read(fd, buf2, BUF_SIZE);
-        // buf2 [5] = '\0';
-        
-        int bytes2 = read(fd, buf2, BUF_SIZE);
-
-        if (bytes2 != -1) 
-        {
-            alarmCount=5;
-            for ( int i = 0 ; i < bytes2; i++) {
-                printf("0x%02X\n", buf2[i]);
-                
-            }
-        }
-        }   
     
 
-    printf("Ending program\n");
-
-    // Wait until all bytes have been written to the serial port
-
-sleep(1);
+    // The while() cycle should be changed in order to respect the specifications
+    // of the protocol indicated in the Lab guide
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)

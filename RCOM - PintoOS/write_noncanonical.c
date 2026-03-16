@@ -22,11 +22,11 @@
 
 #define BUF_SIZE 256
 
-#define FLAG = 0x7E
-#define MY_ADRESS = 0x03
-#define NOT_MY_ADRESS = 0x01
-#define C_SET = 0x03
-#define C_UA = 0x07
+#define FLAG 0x7E
+#define MY_ADRESS 0x03
+#define NOT_MY_ADRESS 0x01
+#define C_SET 0x03
+#define C_UA 0x07
 
 typedef enum
 {
@@ -34,7 +34,7 @@ typedef enum
     FLAG_RCV,
     ADRESS,
     CONTROL,
-    BCC,
+    LER_PAYLOAD,
     PAROU_CARAI
     
 } State;
@@ -66,6 +66,20 @@ readRead(int fd, unsigned char *buf)
 
 
 volatile int STOP = FALSE;
+
+
+unsigned  int calcular_xor(unsigned  char *a, unsigned  char *b, int size) {
+
+    unsigned  int xor = 0;
+
+    for(int i = 0; i < size; i++) {
+        xor ^= a[i];
+    }
+    for(int i = 0; i < size; i++) {
+        xor ^= b[i];
+    }
+    return xor;
+}
 
 int main(int argc, char *argv[])
 {
@@ -136,6 +150,10 @@ int main(int argc, char *argv[])
     // Create string to send
     unsigned char buf[BUF_SIZE + 1] = {0};
     unsigned char buf2[BUF_SIZE + 1] = {0};
+    unsigned char pseudoBuf = 0;
+    unsigned char pack1[BUF_SIZE] = {0};
+    unsigned char pack2[BUF_SIZE] = {0};
+
 
     /*for(int i = 0; i < BUF_SIZE; i++){
         buf[i] = 'a' + i % 26;
@@ -145,7 +163,29 @@ int main(int argc, char *argv[])
     buf[1] = 0x03;
     buf[2] = 0x03;
     buf[3] = buf[1] ^ buf[2];
-    buf[4] = 0x7E;
+    
+    buf[4] = 0xD3;
+    buf[5] = 0xD4;
+    buf[6] = 0xD4;
+    buf[7] = 0xD5;
+    buf[8] = 0xD5;
+
+    for (int i = 4; i<9;i++)
+    {
+        pack1[i-4] = buf[i];
+    }
+    buf[9] = 0xD9;
+    buf[10] = 0xC2;
+    buf[11] = 0x3F;
+    buf[12] = 0x05;
+    buf[13] = 0x11;
+    
+    for (int i = 9; i<13;i++)
+    {
+        pack1[i-9] = buf[i];
+    }
+    buf[14] = calcular_xor(pack1, pack2, BUF_SIZE);
+    buf[15] = 0x7E;
 
     
     //for(int i = 0; i < 5; i++){
@@ -156,7 +196,7 @@ int main(int argc, char *argv[])
         // Test this condition by placing a '\n' in the middle of the buffer.
         // The whole buffer must be sent even with the '\n'.
     
-    buf[5] = '\n';
+    buf[6] = '\n';
         
     for (int i=0; i< BUF_SIZE +1; i++)
     {
@@ -182,43 +222,79 @@ int main(int argc, char *argv[])
 
     while (STOP == FALSE)
     {
-        
+        //printf("WHILEEEEEE\n");
 
         //readRead(fd, buf);
         // Returns after 5 chars have been input    
         printf("analyzing\n");
 
         buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
-
-        if (read(fd, &buf, 1) > 0)
+        
+        if (read(fd, &pseudoBuf, 1) > 0)
         {
+            //printf("IFFFFFFFF\n");
             switch (state)
             {
                 case SIGA:
-                    printf("SIGA");
-                    if (buf == FLAG)
+                    printf("SIGA\n");
+                    printf("0x%02X\n", pseudoBuf);
+
+                    if (pseudoBuf == FLAG)
+                    {
+                        printf("FLAG LIDA\n");
                         state = FLAG_RCV;
+                    }
                     break;
 
                 case FLAG_RCV:
-                    print("FLAG_RCV");
-                    if (buf = )
+                    printf("FLAG_RCV\n");
+                    printf("0x%02X\n", pseudoBuf);
+                    if (pseudoBuf == MY_ADRESS)
+                        state = ADRESS;
+                    else if ( pseudoBuf == FLAG)
+                        break;
+                    else
+                        state == SIGA;
                     break;
 
                 case ADRESS:
+                    printf("ADRESS\n");
+                    printf("0x%02X\n", pseudoBuf);
+                    if (pseudoBuf == C_UA)
+                        state = CONTROL;
+                    else if ( pseudoBuf == FLAG)
+                        state = FLAG_RCV;
+                    else
+                        state == SIGA;
 
                     break;
 
                 case CONTROL:
-
+                    printf("CONTROL\n");
+                    if (pseudoBuf == (MY_ADRESS ^ C_UA))
+                        state = LER_PAYLOAD;
+                    else if ( pseudoBuf == FLAG)
+                        state = FLAG_RCV;
+                    else
+                        state == SIGA;
                     break;
 
-                case BCC:
+                case LER_PAYLOAD:
+                    printf("Ler Payload\n");
+                    if (pseudoBuf == FLAG)
+                    {
 
+                        state = PAROU_CARAI;
+                    }
+                    else
+                        state = SIGA;
                     break;
 
                 case PAROU_CARAI:
-
+                    printf("Parou\n");
+                    state == SIGA;
+                    STOP = TRUE;
+                    printf("Hand mass age\n");
                     break;
             }
         }
@@ -228,19 +304,19 @@ int main(int argc, char *argv[])
 
         //DEBUG
         // for(int i = 0; i < 5; i++){
-        //     printf("var%d = 0x%02X\n", i, buf[i]);
+            // printf("var%d = 0x%02X\n", i, buf[i]);
         // }
         //printf(":%s:%d\n", buf, bytes);
         //printf("var1 = 0x%02X\n", buf[1]);
         //printf("var2 = 0x%02X\n", buf[2]);
         
         //UA
-        if (buf2[1] == 0x01 && buf2[2] == 0x07)
-            printf("Mass age good recipt!\n");
-        else
-            printf("bed mass age\n");
+        // if (buf2[1] == 0x01 && buf2[2] == 0x07)
+        //     printf("Mass age good recipt!\n");
+        // else
+        //     printf("bed mass age\n");
 
-        STOP = TRUE;
+        // STOP = TRUE;
 
         //alarmHandler();
 
