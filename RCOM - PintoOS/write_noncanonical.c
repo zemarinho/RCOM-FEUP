@@ -39,6 +39,8 @@ typedef enum
     
 } State;
 
+volatile int STOP = FALSE;
+
 int     //return 1 se lido, 0 se não leu nada
 readRead(int fd, unsigned char *buf)
 {
@@ -47,37 +49,40 @@ readRead(int fd, unsigned char *buf)
     {
         //printf("test clock\n");
         int bytes;
+        
         bytes = read(fd, buf, 1);
         if(bytes == 0){
             alarmCount++;
-            printf("nao a a panhei");
+            printf("não a panhei\n");
+            //printf("Alarmcount: %d\n", alarmCount);
             return 1;
         }
         else{
             printf("a panhei %d bytes\n", bytes);
-            for(int i = 0; i < 5; i++){
-                printf("buf2[%d] = 0x%02X\n", i, buf[i]);
-            }
+            // for(int i = 0; i < 5; i++){
+            //     printf("buf2[%d] = 0x%02X\n", i, buf[i]);
+            // }
             return 0;
         }
     }
+    STOP = TRUE;
 
 }
 
 
-volatile int STOP = FALSE;
 
 
-unsigned  int calcular_xor(unsigned  char *a, unsigned  char *b, int size) {
+unsigned  int calcular_xor(unsigned  char /**, unsigned  char *b*/*buf, int size) {
 
     unsigned  int xor = 0;
-
-    for(int i = 0; i < size; i++) {
-        xor ^= a[i];
-    }
-    for(int i = 0; i < size; i++) {
-        xor ^= b[i];
-    }
+    for(int i = 0; i < buf.size(); i++)
+        xor^=buf[i];
+    // for(int i = 0; i < size; i++) {
+        // xor ^= a[i];
+    // }
+    // for(int i = 0; i < size; i++) {
+        // xor ^= b[i];
+    // }
     return xor;
 }
 
@@ -184,19 +189,20 @@ int main(int argc, char *argv[])
     {
         pack1[i-9] = buf[i];
     }
-    buf[14] = calcular_xor(pack1, pack2, BUF_SIZE);
+    buf[14] = calcular_xor(/*pack1, pack2*/buf, BUF_SIZE);
+    //buf[14] = 0x38;
     buf[15] = 0x7E;
 
-    
-    //for(int i = 0; i < 5; i++){
-        //    printf("buf[%d] = 0x%02X\n", i, buf[i]);
-        //}
+    //for (int i = 0; i< buf)
+    for(int i = 0; i < 16; i++){
+           printf("buf[%d] = 0x%02X\n", i, buf[i]);
+        }
         
         // In non-canonical mode, '\n' does not end the writing.
         // Test this condition by placing a '\n' in the middle of the buffer.
         // The whole buffer must be sent even with the '\n'.
     
-    buf[6] = '\n';
+    //buf[6] = '\n';
         
     for (int i=0; i< BUF_SIZE +1; i++)
     {
@@ -220,6 +226,7 @@ int main(int argc, char *argv[])
 
     State state = SIGA;
 
+    int readCounter = 0;
     while (STOP == FALSE)
     {
         //printf("WHILEEEEEE\n");
@@ -229,73 +236,84 @@ int main(int argc, char *argv[])
         printf("analyzing\n");
 
         buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
-        
+        if (readCounter >= 5)
+        {
+            break;
+        }
+        readCounter++;
         if (read(fd, &pseudoBuf, 1) > 0)
         {
             //printf("IFFFFFFFF\n");
-            switch (state)
+            readCounter = 0;
+            if (readCounter > 0)
+                write(fd, buf, BUF_SIZE);
+            else
             {
-                case SIGA:
-                    printf("SIGA\n");
-                    printf("0x%02X\n", pseudoBuf);
-
-                    if (pseudoBuf == FLAG)
-                    {
-                        printf("FLAG LIDA\n");
-                        state = FLAG_RCV;
-                    }
-                    break;
-
-                case FLAG_RCV:
-                    printf("FLAG_RCV\n");
-                    printf("0x%02X\n", pseudoBuf);
-                    if (pseudoBuf == MY_ADRESS)
-                        state = ADRESS;
-                    else if ( pseudoBuf == FLAG)
+                switch (state)
+                {
+                    case SIGA:
+                        printf("Comecei a ler\n");
+                        if (pseudoBuf == FLAG)
+                        {
+                            printf("Recebi flag inicial: 0x%02X\n", pseudoBuf);
+                            state = FLAG_RCV;
+                        }
                         break;
-                    else
+
+                    case FLAG_RCV:
+                        if (pseudoBuf == MY_ADRESS)
+                        {
+                            printf("recebi adress: 0x%02X\n", pseudoBuf);
+                            state = ADRESS;
+                        }
+                        else if ( pseudoBuf == FLAG)
+                            break;
+                        else
+                            state == SIGA;
+                        break;
+
+                    case ADRESS:
+                        if (pseudoBuf == C_UA)
+                        {
+                            printf("recebi o controlo: 0x%02X\n", pseudoBuf);
+                            state = CONTROL;
+                        }
+                        else if ( pseudoBuf == FLAG)
+                            state = FLAG_RCV;
+                        else
+                            state == SIGA;
+
+                        break;
+
+                    case CONTROL:
+                        if (pseudoBuf == (MY_ADRESS ^ C_UA))
+                        {
+                            state = LER_PAYLOAD;
+                            printf("Ingnorando o Payload: 0x%02X\n", pseudoBuf);
+                        }
+                        else if ( pseudoBuf == FLAG)
+                            state = FLAG_RCV;
+                        else
+                            state == SIGA;
+                        break;
+
+                    case LER_PAYLOAD:
+                        if (pseudoBuf == FLAG)
+                        {
+                            state = PAROU_CARAI;
+                        }
+                        else
+                            state = SIGA;
+                        break;
+
+                    case PAROU_CARAI:
+                        printf("Parou\n");
                         state == SIGA;
-                    break;
-
-                case ADRESS:
-                    printf("ADRESS\n");
-                    printf("0x%02X\n", pseudoBuf);
-                    if (pseudoBuf == C_UA)
-                        state = CONTROL;
-                    else if ( pseudoBuf == FLAG)
-                        state = FLAG_RCV;
-                    else
-                        state == SIGA;
-
-                    break;
-
-                case CONTROL:
-                    printf("CONTROL\n");
-                    if (pseudoBuf == (MY_ADRESS ^ C_UA))
-                        state = LER_PAYLOAD;
-                    else if ( pseudoBuf == FLAG)
-                        state = FLAG_RCV;
-                    else
-                        state == SIGA;
-                    break;
-
-                case LER_PAYLOAD:
-                    printf("Ler Payload\n");
-                    if (pseudoBuf == FLAG)
-                    {
-
-                        state = PAROU_CARAI;
-                    }
-                    else
-                        state = SIGA;
-                    break;
-
-                case PAROU_CARAI:
-                    printf("Parou\n");
-                    state == SIGA;
-                    STOP = TRUE;
-                    printf("Hand mass age\n");
-                    break;
+                        STOP = TRUE;
+                        printf("Hand mass age\n");
+                        //printf("Voltando ao início\n");
+                        break;
+                }
             }
         }
 
@@ -324,7 +342,8 @@ int main(int argc, char *argv[])
         //if (buf[0] == 'z')
         //    STOP = TRUE;
     }
-
+    printf("Cheguei ao fim\n");
+    sleep(1);
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
     {

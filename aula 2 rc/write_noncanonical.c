@@ -1,116 +1,86 @@
-// Write to serial port in non-canonical mode
-//
-// Modified by: Eduardo Nuno Almeida [enalmeida@fe.up.pt]
-
 #include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <termios.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h>
+#include <signal.h> // Necessário para os alarmes
 
-// Baudrate settings are defined in <asm/termbits.h>, which is
-// included by <termios.h>
 #define BAUDRATE B38400
-#define _POSIX_SOURCE 1 // POSIX compliant source
+#define _POSIX_SOURCE 1 
 
 #define FALSE 0
 #define TRUE 1
 
-#define BUF_SIZE 5
-#define SIGALRM 14
+// Estados para a Máquina de Estados
+typedef enum {
+    START,
+    FLAG_RCV,
+    A_RCV,
+    C_RCV,
+    BCC_OK,
+    STOP_STATE
+} State;
 
-volatile int STOP = FALSE;
-
+// Variáveis globais para o Alarme
 int alarmEnabled = FALSE;
 int alarmCount = 0;
 
+// Função que é chamada quando o alarme dispara
 void alarmHandler(int signal)
 {
     alarmEnabled = FALSE;
     alarmCount++;
-
-    printf("Alarm #%d received\n", alarmCount);
+    printf("Alarme #%d disparado!\n", alarmCount);
 }
 
 int main(int argc, char *argv[])
 {
-    // Program usage: Uses either COM1 or COM2
     const char *serialPortName = argv[1];
 
     if (argc < 2)
     {
-        printf("Incorrect program usage\n"
-               "Usage: %s <SerialPort>\n"
-               "Example: %s /dev/ttyS1\n",
-               argv[0],
-               argv[0]);
+        printf("Incorrect program usage\n");
         exit(1);
     }
 
-    // Open serial port device for reading and writing, and not as controlling tty
-    // because we don't want to get killed if linenoise sends CTRL-C.
     int fd = open(serialPortName, O_RDWR | O_NOCTTY);
-
     if (fd < 0)
     {
         perror(serialPortName);
         exit(-1);
     }
 
-    struct termios oldtio;
-    struct termios newtio;
+    struct termios oldtio, newtio;
 
-    // Save current port settings
     if (tcgetattr(fd, &oldtio) == -1)
     {
         perror("tcgetattr");
         exit(-1);
     }
 
-    // Clear struct for new port settings
     memset(&newtio, 0, sizeof(newtio));
 
     newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
     newtio.c_iflag = IGNPAR;
     newtio.c_oflag = 0;
-
-    // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
+    
+    // Leitura não bloqueante para permitir que o ciclo continue a verificar o alarme
+    newtio.c_cc[VTIME] = 1; // Timeout de 0.1s
+    newtio.c_cc[VMIN] = 0;
 
-    // VTIME e VMIN should be changed in order to protect with a
-    // timeout the reception of the following character(s)
-
-    // Now clean the line and activate the settings for the port
-    // tcflush() discards data written to the object referred to
-    // by fd but not transmitted, or data received but not read,
-    // depending on the value of queue_selector:
-    //   TCIFLUSH - flushes data received but not read.
     tcflush(fd, TCIOFLUSH);
 
-    // Set new port settings
     if (tcsetattr(fd, TCSANOW, &newtio) == -1)
     {
         perror("tcsetattr");
         exit(-1);
     }
 
-    printf("New termios structure set\n");
-
-    unsigned char A = 0x03, C=0x03;
-    unsigned char BCC = A ^ C;
-    unsigned char buf[BUF_SIZE] = {0x7E, 0x03, 0x03, BCC, 0x7E};
-
-    // In non-canonical mode, '\n' does not end the writing.
-    // Test this condition by placing a '\n' in the middle of the buffer.
-    // The whole buffer must be sent even with the '\n'.
-    buf[5] = '\n';
-
+    // Configurar a função que lida com o alarme
     struct sigaction act = {0};
     act.sa_handler = &alarmHandler;
     if (sigaction(SIGALRM, &act, NULL) == -1)
@@ -119,49 +89,75 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    printf("Alarm configured\n");
+    // -----------------------------------------------------------------
+    // LÓGICA DE ENVIO DO SET E RECEÇÃO DO UA (C/ RETRANSMISSÃO)
+    // -----------------------------------------------------------------
+    unsigned char set_frame[5] = {0x7E, 0x03, 0x03, 0x03 ^ 0x03, 0x7E};
+    
+    State state = START;
+    unsigned char byte_rcv;
+    unsigned char A_field_ua = 0x03; 
+    unsigned char C_field_ua = 0x07; // Controlo esperado para a trama UA
 
-    while (alarmCount < 4)
+    while (alarmCount < 3 && state != STOP_STATE)
     {
         if (alarmEnabled == FALSE)
         {
-        
-        int bytes = write(fd, buf, BUF_SIZE);
-        alarm(3); // Set alarm to be triggered in 3s
-        
-        
-        for (int i = 0; i < bytes; i++)
-        {
-            printf("0x%02X\n", buf[i]);
-        }
+            write(fd, set_frame, 5);
+            printf("Trama SET enviada.\n");
+            
+            alarm(3); // Ativa alarme de 3 segundos
+            alarmEnabled = TRUE;
+            state = START; // Reinicia a máquina de estados
         }
 
-        
-        alarmEnabled = TRUE;
-        unsigned char buf2[BUF_SIZE] = {0}; 
-        //bytes= read(fd, buf2, BUF_SIZE);
-        // buf2 [5] = '\0';
-        
-        int bytes2 = read(fd, buf2, BUF_SIZE);
-
-        if (bytes2 != -1) 
+        // Tenta ler 1 byte (não bloqueia para sempre por causa do VTIME e VMIN)
+        if (read(fd, &byte_rcv, 1) > 0)
         {
-            alarmCount=5;
-            for ( int i = 0 ; i < bytes2; i++) {
-                printf("0x%02X\n", buf2[i]);
-                
+            printf("0x%02hhX\n",byte_rcv);
+            switch (state) 
+            {
+                case START:
+                    printf("1");
+                    if (byte_rcv == 0x7E) state = FLAG_RCV;
+                    break;
+                case FLAG_RCV:
+                    printf("2");
+                    if (byte_rcv == A_field_ua) state = A_RCV;
+                    else if (byte_rcv != 0x7E) state = START;
+                    break;
+                case A_RCV:
+                    printf("3");
+                    if (byte_rcv == C_field_ua) state = C_RCV;
+                    else if (byte_rcv == 0x7E) state = FLAG_RCV;
+                    else state = START;
+                    break;
+                case C_RCV:
+                    printf("4");
+                    if (byte_rcv == (A_field_ua ^ C_field_ua)) state = BCC_OK;
+                    else if (byte_rcv == 0x7E) state = FLAG_RCV;
+                    else state = START;
+                    break;
+                case BCC_OK:
+                    printf("5");
+                    if (byte_rcv == 0x7E) {
+                        state = STOP_STATE;
+                        alarm(0); // DESLIGA O ALARME! Recebemos o UA.
+                        printf("Trama UA recebida com sucesso! Ligacao estabelecida.\n");
+                    }
+                    else state = START;
+                    break;
+                default:
+                    break;
             }
         }
-        }   
-    
+    }
 
-    printf("Ending program\n");
+    if (state != STOP_STATE) {
+        printf("Falha na ligacao: Trama UA nao recebida apos 3 tentativas.\n");
+    }
+    // -----------------------------------------------------------------
 
-    // Wait until all bytes have been written to the serial port
-
-sleep(1);
-
-    // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
     {
         perror("tcsetattr");
@@ -169,6 +165,5 @@ sleep(1);
     }
 
     close(fd);
-
     return 0;
 }
