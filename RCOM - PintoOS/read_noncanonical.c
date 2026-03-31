@@ -107,6 +107,7 @@ int main(int argc, char *argv[])
 
     // Loop for input
     unsigned char buf[8*BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
+    unsigned char dataBuffer[8*BUF_SIZE + 1] = {0};
     unsigned char readChar = 0, BCC2 = 0x00;
     int dataCount = 0;
 

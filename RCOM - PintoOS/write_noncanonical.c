@@ -164,6 +164,8 @@ int main(int argc, char *argv[])
                                                           {0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0, 0, 0, 0, 0, 0, 0, 0},
                                                           {0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0, 0, 0, 0, 0, 0, 0, 0},
                                                           {0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0, 0, 0, 0, 0, 0, 0, 0}};
+
+    unsigned char packSizes[PACK_HOLDER_SIZE] = {0};
         
     unsigned int xor;
     for (int i = 0; i<PACK_HOLDER_SIZE; i++)
@@ -198,12 +200,13 @@ int main(int argc, char *argv[])
             else{
                 j++;
             }
-            
         }
-        memmove(&buf[insertionPos + 2*PACK_SIZE], &buf[insertionPos], currenteSize - insertionPos);
-        memcpy(&buf[insertionPos], packs[i], 2*PACK_SIZE);
-        insertionPos += 2*PACK_SIZE;
-        currenteSize += 2*PACK_SIZE;
+        packSizes[i] = lastId+1;
+
+        memmove(&buf[insertionPos + packSizes[i]], &buf[insertionPos], currenteSize - insertionPos);
+        memcpy(&buf[insertionPos], packs[i], packSizes[i]);
+        insertionPos += packSizes[i];
+        currenteSize += packSizes[i];
         if (i == PACK_HOLDER_SIZE-1)
         {
             memmove(&buf[insertionPos + 1], &buf[insertionPos], currenteSize - insertionPos);
