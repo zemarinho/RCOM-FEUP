@@ -26,6 +26,7 @@
 #define A_fromR 0x01
 #define C_SET 0x03
 #define C_UA 0x07
+#define ESC 0x7D
 
 volatile int STOP = FALSE;
 
@@ -110,8 +111,10 @@ int main(int argc, char *argv[])
     unsigned char dataBuffer[8*BUF_SIZE + 1] = {0};
     unsigned char readChar = 0, BCC2 = 0x00;
     int dataCount = 0;
+    int esc = 0;
 
-    while (STOP == FALSE && read(fd, &readChar, 1) > 0){
+    while (STOP == FALSE && read(fd, &readChar, 1) > 0)
+    {
         // Returns after 5 chars have been input
         //int bytes = read(fd, buf, BUF_SIZE);
         //buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
@@ -174,11 +177,33 @@ int main(int argc, char *argv[])
                 }
                 else{
                     printf("DATA %d\n", dataCount);
-                    BCC2 ^= readChar;
-                    dataCount++;
+                    if (readChar == 0x7D)
+                    {
+                        esc++;
+                    }
+                    else
+                    {
+                        if (esc)
+                        {
+                            dataBuffer[dataCount] = readChar ^ 0x20;
+                            esc = 0;
+                        }
+                        else
+                        {
+                            dataBuffer[dataCount] = readChar;
+                        }
+                        BCC2 ^= dataBuffer[dataCount];
+                        dataCount++;
+                    }
                 }
                 break;
         }
+    }
+
+    printf("DATA RECEIVED:\n");
+    for (int i = 0; i<dataCount; i++)
+    {
+        printf("0x%02X\n", dataBuffer[i]);
     }
     printf("STOP\n");
 
