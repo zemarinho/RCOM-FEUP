@@ -156,31 +156,32 @@ int main(int argc, char *argv[])
     buf[3] = buf[1] ^ buf[2];
     buf[4] = 0x7E;
     
-    unsigned char packs[31][2*8] = {{0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0, 0, 0, 0, 0, 0, 0, 0},
+    unsigned char packs[7][2*8] = {{0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0, 0, 0, 0, 0, 0, 0, 0},
                                     {0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0},
                                     {0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0, 0, 0, 0, 0, 0, 0, 0},
                                     {0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0, 0, 0, 0, 0, 0, 0, 0},
                                     {0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0, 0, 0, 0, 0, 0, 0, 0}};
         
     unsigned int xor;
-    for (int i = 0; i<31; i++)
+    for (int i = 0; i<7; i++)
     {
         if (!i)
         {
             xor = 0;
         }
         memmove(&buf[insertionPos + 2*8], &buf[insertionPos], currenteSize - insertionPos);
-        memcpy(&buf[insertionPos], packs[0], 2*8);
+        memcpy(&buf[insertionPos], packs[i], 2*8);
         insertionPos += 2*8;
         currenteSize += 2*8;
         xor = calcular_xor(packs[i], xor, 2*8);
-        if (i = 31-1)
+        if (i == 7-1)
         {
             memmove(&buf[insertionPos + 1], &buf[insertionPos], currenteSize - insertionPos);
             memcpy(&buf[insertionPos], &xor, 1);
             insertionPos += 1;
             currenteSize += 1;
         }
+        //printf("%d\n", i);
     }
 
 
@@ -188,7 +189,7 @@ int main(int argc, char *argv[])
 
 
     //for (int i = 0; i< buf)
-    for(int i = 0; i < 16; i++){
+    for(int i = 0; i < currenteSize; i++){
            printf("buf[%d] = 0x%02X\n", i, buf[i]);
         }
         
