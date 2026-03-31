@@ -72,17 +72,10 @@ readRead(int fd, unsigned char *buf)
 
 
 
-unsigned  int calcular_xor(unsigned  char /**, unsigned  char *b*/*buf, int size) {
+unsigned  int calcular_xor(const unsigned char a, unsigned int xor) {
 
-    unsigned  int xor = 0;
-    for(int i = 0; i < buf.size(); i++)
-        xor^=buf[i];
-    // for(int i = 0; i < size; i++) {
-        // xor ^= a[i];
-    // }
-    // for(int i = 0; i < size; i++) {
-        // xor ^= b[i];
-    // }
+    for(int i = 0; i < a.size(); i++)
+        xor^=a[i];
     return xor;
 }
 
@@ -153,45 +146,55 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Create string to send
-    unsigned char buf[BUF_SIZE + 1] = {0};
-    unsigned char buf2[BUF_SIZE + 1] = {0};
+    unsigned char buf[8*BUF_SIZE + 1] = {0};
+    unsigned char buf2[8*BUF_SIZE + 1] = {0};
     unsigned char pseudoBuf = 0;
-    unsigned char pack1[BUF_SIZE] = {0};
-    unsigned char pack2[BUF_SIZE] = {0};
+    unsigned char packs[31][2*8] = {0};
 
 
     /*for(int i = 0; i < BUF_SIZE; i++){
         buf[i] = 'a' + i % 26;
     }*/
 
+    int insertionPos = 4; //posição atual onde se pode inserir novo pacote
+    int currenteSize = 5; //número atual de elementos "úteis"
+
     buf[0] = 0x7E;
     buf[1] = 0x03;
     buf[2] = 0x03;
     buf[3] = buf[1] ^ buf[2];
+    buf[4] = 0x7E;
     
-    buf[4] = 0xD3;
-    buf[5] = 0xD4;
-    buf[6] = 0xD4;
-    buf[7] = 0xD5;
-    buf[8] = 0xD5;
+    packs[0] = {0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0, 0, 0, 0, 0, 0, 0, 0};
+    packs[1] = {0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0};
+    packs[2] = {0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0, 0, 0, 0, 0, 0, 0, 0};
+    packs[3] = {0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0, 0, 0, 0, 0, 0, 0, 0};
+    packs[4] = {0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0, 0, 0, 0, 0, 0, 0, 0};
+    
+    unsigned int xor;
+    for (int i = 0; i<packs.size(); i++)
+    {
+        if (!i)
+        {
+            xor = 0;
+        }
+        memmove(&buf[insertionPos + packs[0].size()], &buf[insertionPos], currenteSize - insertionPos);
+        memccpy(&buf[insertionPos], pack[0], pack[0].size());
+        insertionPos += pack[0].size();
+        currenteSize += pack[0].size();
+        xor = calcular_xor(packs[i], xor);
+        if (i = packs.size()-1)
+        {
+            memmove(&buf[insertionPos + 1], &buf[insertionPos], currenteSize - insertionPos);
+            memccpy(&buf[insertionPos], xor, 1);
+            insertionPos += pack[0].size();
+            currenteSize += pack[0].size();
+        }
+    }
 
-    for (int i = 4; i<9;i++)
-    {
-        pack1[i-4] = buf[i];
-    }
-    buf[9] = 0xD9;
-    buf[10] = 0xC2;
-    buf[11] = 0x3F;
-    buf[12] = 0x05;
-    buf[13] = 0x11;
-    
-    for (int i = 9; i<13;i++)
-    {
-        pack1[i-9] = buf[i];
-    }
-    buf[14] = calcular_xor(/*pack1, pack2*/buf, BUF_SIZE);
-    //buf[14] = 0x38;
-    buf[15] = 0x7E;
+
+
+
 
     //for (int i = 0; i< buf)
     for(int i = 0; i < 16; i++){
