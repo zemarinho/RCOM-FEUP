@@ -22,8 +22,8 @@
 #define BUF_SIZE 256
 
 #define FLAG 0x7E
-#define A_T2R 0x03
-#define A_R2T 0x01
+#define A_fromT 0x03
+#define A_fromR 0x01
 #define C_SET 0x03
 #define C_UA 0x07
 
@@ -34,7 +34,7 @@ typedef enum{
     FLAG_RCV,
     A_RCV,
     C_RCV,
-    BCC_OK
+    DATA
 } receiverState;
 
 int main(int argc, char *argv[])
@@ -107,7 +107,8 @@ int main(int argc, char *argv[])
 
     // Loop for input
     unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
-    unsigned char readChar = 0;
+    unsigned char readChar = 0, BCC2 = 0x00;
+    int dataCount = 0;
 
     while (STOP == FALSE && read(fd, &readChar, 1) > 0){
         // Returns after 5 chars have been input
@@ -129,7 +130,7 @@ int main(int argc, char *argv[])
 
             case FLAG_RCV:
                 printf("FLAG_RCV\n");
-                if(readChar == A_T2R)
+                if(readChar == A_fromT)
                     recState = A_RCV;
                 else if (readChar != FLAG)
                     recState = START;
@@ -147,76 +148,41 @@ int main(int argc, char *argv[])
 
             case C_RCV:
                 printf("C_RCV\n");
-                if(readChar == A_T2R ^ C_SET)
-                    recState = BCC_OK;
+                if(readChar == A_fromT ^ C_SET)
+                    recState = DATA;
                 else if(readChar == FLAG)
                     recState = FLAG_RCV;
                 else
                     recState = START;
                 break;
 
-            case BCC_OK:
-                printf("BCC_OK\n");
+            case DATA:
                 if(readChar == FLAG){
+                    printf("END FLAG\n");
                     buf[0] = buf[4] = readChar;
-                    STOP = TRUE;
+                    // Checking BCC2
+                    printf("Checking BCC2 - %d\n", BCC2);
+                    if(!BCC2){
+                        printf("BCC2 Check\n");
+                        STOP = TRUE;
+                    }
+                    else
+                        printf("Bad BCC2\n");
+                        //recState = START;
+                        STOP = TRUE;
                 }
-                else
-                    recState = START;
+                else{
+                    printf("DATA %d\n", dataCount);
+                    BCC2 ^= readChar;
+                    dataCount++;
+                }
                 break;
         }
-/*
-        if(recState == START){
-            printf("START\n");
-            if(readChar == FLAG)
-                recState = FLAG_RCV;
-        }
-
-        if(recState == FLAG_RCV){
-            printf("FLAG_RCV\n");
-            if(readChar == A_T2R)
-                recState = A_RCV;
-            else if (readChar != FLAG)
-                recState = START;
-        }
-
-        if(recState == A_RCV){
-            printf("A_RCV\n");
-            if(readChar == C_SET)
-                recState = C_RCV;
-            else if(readChar == FLAG)
-                recState = FLAG_RCV;
-            else
-                recState = START;
-        }
-
-        if(recState == C_RCV){
-            printf("C_RCV\n");
-            if(readChar == A_T2R ^ C_SET)
-                recState = BCC_OK;
-            else if(readChar == FLAG)
-                recState = FLAG_RCV;
-            else
-                recState = START;
-        }
-
-        if(recState == BCC_OK){
-            printf("BCC_OK\n");
-            if(readChar == FLAG){
-                buf[0] = buf[4] = readChar;
-                STOP = TRUE;
-            }
-            else
-                recState = START;
-        }
-*/
-        /*if (buf[0] == 'z')*/
-        //    STOP = TRUE;
     }
     printf("STOP\n");
 
     // UA
-    buf[1] = A_R2T;
+    buf[1] = A_fromT;
     buf[2] = C_UA;
     buf[3] = buf[1] ^ buf[2];
     buf[5] = '\0';
