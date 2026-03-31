@@ -21,12 +21,15 @@
 #define TRUE 1
 
 #define BUF_SIZE 256
+#define PACK_SIZE 8
+#define PACK_HOLDER_SIZE 7
 
 #define FLAG 0x7E
 #define MY_ADRESS 0x03
 #define NOT_MY_ADRESS 0x01
 #define C_SET 0x03
 #define C_UA 0x07
+#define ESC 0x7D
 
 typedef enum
 {
@@ -156,25 +159,52 @@ int main(int argc, char *argv[])
     buf[3] = buf[1] ^ buf[2];
     buf[4] = 0x7E;
     
-    unsigned char packs[7][2*8] = {{0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0, 0, 0, 0, 0, 0, 0, 0},
-                                    {0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0},
-                                    {0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0, 0, 0, 0, 0, 0, 0, 0},
-                                    {0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0, 0, 0, 0, 0, 0, 0, 0},
-                                    {0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0, 0, 0, 0, 0, 0, 0, 0}};
+    unsigned char packs[PACK_HOLDER_SIZE][2*PACK_SIZE] = {{0xA1, 0xA2, 0xA3, 0x7D, 0x7E, 0x7E, 0xA7, 0x7E, 0, 0, 0, 0, 0, 0, 0, 0},
+                                                          {0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0},
+                                                          {0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0, 0, 0, 0, 0, 0, 0, 0},
+                                                          {0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0, 0, 0, 0, 0, 0, 0, 0},
+                                                          {0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0, 0, 0, 0, 0, 0, 0, 0}};
         
     unsigned int xor;
-    for (int i = 0; i<7; i++)
+    for (int i = 0; i<PACK_HOLDER_SIZE; i++)
     {
         if (!i)
         {
             xor = 0;
         }
-        memmove(&buf[insertionPos + 2*8], &buf[insertionPos], currenteSize - insertionPos);
-        memcpy(&buf[insertionPos], packs[i], 2*8);
-        insertionPos += 2*8;
-        currenteSize += 2*8;
-        xor = calcular_xor(packs[i], xor, 2*8);
-        if (i == 7-1)
+
+        xor = calcular_xor(packs[i], xor, 2*PACK_SIZE); //XOR calculado antes de bytestuffing
+
+        int lastId = PACK_SIZE-1;
+        
+        for (int j = 0; j<2*PACK_SIZE; j)
+        {
+            if (packs[i][j] == FLAG || packs[i][j] == ESC)
+            {
+                memmove(&packs[i][j + 2], &packs[i][j + 1], lastId - j);
+
+                if (packs[i][j] == FLAG)
+                {
+                    packs[i][j] = ESC;
+                    packs[i][j + 1] = 0x5E;
+                }
+                else
+                {
+                    packs[i][j + 1] = 0x5D;
+                }
+                lastId++; // cresce dentro da zona de zeros
+                j+=2;      // skip ao byte inserido
+            }
+            else{
+                j++;
+            }
+            
+        }
+        memmove(&buf[insertionPos + 2*PACK_SIZE], &buf[insertionPos], currenteSize - insertionPos);
+        memcpy(&buf[insertionPos], packs[i], 2*PACK_SIZE);
+        insertionPos += 2*PACK_SIZE;
+        currenteSize += 2*PACK_SIZE;
+        if (i == PACK_HOLDER_SIZE-1)
         {
             memmove(&buf[insertionPos + 1], &buf[insertionPos], currenteSize - insertionPos);
             memcpy(&buf[insertionPos], &xor, 1);
