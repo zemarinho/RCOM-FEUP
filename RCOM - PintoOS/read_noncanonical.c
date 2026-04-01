@@ -38,146 +38,173 @@ typedef enum{
     DATA
 } receiverState;
 
-int main(int argc, char *argv[])
+int llopen(const char *serialPortName, struct termios *oldtio)
 {
-    // Program usage: Uses either COM1 or COM2
-    const char *serialPortName = argv[1];
+    if (serialPortName == NULL || oldtio == NULL)
+        return -1;
 
-    if (argc < 2)
-    {
-        printf("Incorrect program usage\n"
-               "Usage: %s <SerialPort>\n"
-               "Example: %s /dev/ttyS1\n",
-               argv[0],
-               argv[0]);
-        exit(1);
-    }
-
-    // Open serial port device for reading and writing and not as controlling tty
-    // because we don't want to get killed if linenoise sends CTRL-C.
     int fd = open(serialPortName, O_RDWR | O_NOCTTY);
     if (fd < 0)
     {
         perror(serialPortName);
-        exit(-1);
+        return -1;
     }
 
-    struct termios oldtio;
     struct termios newtio;
 
-    // Save current port settings
-    if (tcgetattr(fd, &oldtio) == -1)
+    if (tcgetattr(fd, oldtio) == -1)
     {
         perror("tcgetattr");
-        exit(-1);
+        close(fd);
+        return -1;
     }
 
-    // Clear struct for new port settings
     memset(&newtio, 0, sizeof(newtio));
 
     newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
     newtio.c_iflag = IGNPAR;
     newtio.c_oflag = 0;
-
-    // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 30; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
+    newtio.c_cc[VTIME] = 30;
+    newtio.c_cc[VMIN] = 0;
 
-    // VTIME e VMIN should be changed in order to protect with a
-    // timeout the reception of the following character(s)
-
-    // Now clean the line and activate the settings for the port
-    // tcflush() discards data written to the object referred to
-    // by fd but not transmitted, or data received but not read,
-    // depending on the value of queue_selector:
-    //   TCIFLUSH - flushes data received but not read.
     tcflush(fd, TCIOFLUSH);
-
-    // Set new port settings
     if (tcsetattr(fd, TCSANOW, &newtio) == -1)
     {
         perror("tcsetattr");
-        exit(-1);
+        close(fd);
+        return -1;
     }
 
-    printf("New termios structure set\n");
-
     receiverState recState = START;
-    int tries = 0;
+    unsigned char readChar;
+    int gotSet = 0;
 
-    // Loop for input
-    unsigned char buf[8*BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
-    unsigned char dataBuffer[8*BUF_SIZE + 1] = {0};
-    unsigned char readChar = 0, BCC2 = 0x00;
+    while (!gotSet && read(fd, &readChar, 1) > 0)
+    {
+        switch (recState)
+        {
+            case START:
+                if (readChar == FLAG)
+                    recState = FLAG_RCV;
+                break;
+            case FLAG_RCV:
+                if (readChar == A_fromT)
+                    recState = A_RCV;
+                else if (readChar == FLAG)
+                    recState = FLAG_RCV;
+                else
+                    recState = START;
+                break;
+            case A_RCV:
+                if (readChar == C_SET)
+                    recState = C_RCV;
+                else if (readChar == FLAG)
+                    recState = FLAG_RCV;
+                else
+                    recState = START;
+                break;
+            case C_RCV:
+                if (readChar == (A_fromT ^ C_SET))
+                    recState = DATA;
+                else if (readChar == FLAG)
+                    recState = FLAG_RCV;
+                else
+                    recState = START;
+                break;
+            case DATA:
+                if (readChar == FLAG)
+                {
+                    gotSet = 1;
+                }
+                else
+                {
+                    recState = START;
+                }
+                break;
+        }
+    }
+
+    if (!gotSet)
+    {
+        fprintf(stderr, "llopen: SET not received\n");
+        close(fd);
+        return -1;
+    }
+
+    unsigned char uaFrame[5] = {FLAG, A_fromR, C_UA, (A_fromR ^ C_UA), FLAG};
+    if (write(fd, uaFrame, 5) != 5)
+    {
+        perror("write UA");
+        close(fd);
+        return -1;
+    }
+
+    printf("llopen: link established (SET received, UA sent)\n");
+    return fd;
+}
+
+int llread(int fd, unsigned char *dataBuffer)
+{
+    receiverState recState = START;
+    unsigned char readChar = 0;
+    unsigned char BCC2 = 0x00;
     int dataCount = 0;
     int esc = 0;
 
+    memset(dataBuffer, 0, 8*BUF_SIZE + 1);
+
     while (STOP == FALSE && read(fd, &readChar, 1) > 0)
     {
-        // Returns after 5 chars have been input
-        //int bytes = read(fd, buf, BUF_SIZE);
-        //buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
-
         printf("Received 0x%02X\n", readChar);
-        /*for(int i = 0; i < 5; i++){
-            printf("buf[%d] = 0x%02X\n", i, buf[i]);
-        }*/
-        //printf(":%s:%d\n", buf, bytes);
 
-        switch(recState){
+        switch (recState)
+        {
             case START:
-                printf("START\n");
-                if(readChar == FLAG)
+                if (readChar == FLAG)
                     recState = FLAG_RCV;
                 break;
-
             case FLAG_RCV:
-                printf("FLAG_RCV\n");
-                if(readChar == A_fromT)
+                if (readChar == A_fromT)
                     recState = A_RCV;
                 else if (readChar != FLAG)
                     recState = START;
                 break;
-
             case A_RCV:
-                printf("A_RCV\n");
-                if(readChar == C_SET)
+                if (readChar == C_SET)
                     recState = C_RCV;
-                else if(readChar == FLAG)
+                else if (readChar == FLAG)
                     recState = FLAG_RCV;
                 else
                     recState = START;
                 break;
-
             case C_RCV:
-                printf("C_RCV\n");
-                if(readChar == A_fromT ^ C_SET)
+                if (readChar == (A_fromT ^ C_SET))
                     recState = DATA;
-                else if(readChar == FLAG)
+                else if (readChar == FLAG)
                     recState = FLAG_RCV;
                 else
                     recState = START;
                 break;
-
             case DATA:
-                if(readChar == FLAG){
+                if (readChar == FLAG)
+                {
                     printf("END FLAG\n");
-                    buf[0] = buf[4] = readChar;
-                    // Checking BCC2
-                    printf("Checking BCC2 - %d\n", BCC2);
-                    if(!BCC2){
-                        printf("BCC2 Check\n");
+                    if (!BCC2)
+                    {
+                        printf("BCC2 Check OK\n");
                         STOP = TRUE;
                     }
                     else
+                    {
                         printf("Bad BCC2\n");
-                        //recState = START;
                         STOP = TRUE;
+                    }
                 }
-                else{
+                else
+                {
                     printf("DATA %d\n", dataCount);
-                    if (readChar == 0x7D)
+                    if (readChar == ESC)
                     {
                         esc++;
                     }
@@ -201,40 +228,59 @@ int main(int argc, char *argv[])
     }
 
     printf("DATA RECEIVED:\n");
-    for (int i = 0; i<dataCount; i++)
+    for (int i = 0; i < dataCount; i++)
     {
         printf("0x%02X\n", dataBuffer[i]);
     }
-    printf("STOP\n");
 
-    // UA
-    buf[1] = A_fromT;
-    buf[2] = C_UA;
-    buf[3] = buf[1] ^ buf[2];
-    buf[5] = '\0';
-
-    printf("Acknowledging\n");
-    for(int i = 0; i < 5; i++){
-        printf("buf[%d] = 0x%02X\n", i, buf[i]);
+    unsigned char ackFrame[5] = {FLAG, A_fromR, C_UA, (A_fromR ^ C_UA), FLAG};
+    if (write(fd, ackFrame, 5) != 5)
+    {
+        perror("write UA");
+        return -1;
     }
 
-    printf("%d bytes written back\n", (int) write(fd, buf, BUF_SIZE));
+    printf("llread: UA sent as acknowledgement\n");
+    return 0;
+}
 
-    // The while() cycle should be changed in order to respect the specifications
-    // of the protocol indicated in the Lab guide
-
-
-
-    sleep(1);
-    
-    // Restore the old port settings
-    if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
+int llclose(int fd, struct termios *oldtio)
+{
+    if (tcsetattr(fd, TCSANOW, oldtio) == -1)
     {
         perror("tcsetattr");
-        exit(-1);
+        close(fd);
+        return -1;
     }
 
     close(fd);
+    printf("llclose: link closed\n");
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc < 2)
+    {
+        printf("Incorrect program usage\n"
+               "Usage: %s <SerialPort>\n"
+               "Example: %s /dev/ttyS1\n",
+               argv[0],
+               argv[0]);
+        return 1;
+    }
+
+    struct termios oldtio;
+    int fd = llopen(argv[1], &oldtio);
+    unsigned char dataBuffer[8*BUF_SIZE + 1];
+    if (fd < 0)
+        return 1;
+
+    if (llread(fd, dataBuffer) != 0)
+        fprintf(stderr, "llread failed\n");
+
+    if (llclose(fd, &oldtio) != 0)
+        fprintf(stderr, "llclose failed\n");
 
     return 0;
 }
