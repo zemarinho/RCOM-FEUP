@@ -1,3 +1,3 @@
-###RCOM - FEUP
+# RCOM - FEUP
 
 José Marinho & Francisco Silva
