@@ -79,112 +79,139 @@ unsigned  int calcular_xor(const unsigned char a[], unsigned int xor, int size) 
     return xor;
 }
 
-int main(int argc, char *argv[])
+int llopen(const char *serialPortName, struct termios *oldtio)
 {
-    // Program usage: Uses either COM1 or COM2
-    const char *serialPortName = argv[1];
+    if (serialPortName == NULL || oldtio == NULL)
+        return -1;
 
-    if (argc < 2)
-    {
-        printf("Incorrect program usage\n"
-               "Usage: %s <SerialPort>\n"
-               "Example: %s /dev/ttyS1\n",
-               argv[0],
-               argv[0]);
-        exit(1);
-    }
-
-    // Open serial port device for reading and writing, and not as controlling tty
-    // because we don't want to get killed if linenoise sends CTRL-C.
     int fd = open(serialPortName, O_RDWR | O_NOCTTY);
-
     if (fd < 0)
     {
         perror(serialPortName);
-        exit(-1);
+        return -1;
     }
-    
-    struct termios oldtio;
+
     struct termios newtio;
 
-    // Save current port settings
-    if (tcgetattr(fd, &oldtio) == -1)
+    if (tcgetattr(fd, oldtio) == -1)
     {
         perror("tcgetattr");
-        exit(-1);
+        close(fd);
+        return -1;
     }
 
-    // Clear struct for new port settings
     memset(&newtio, 0, sizeof(newtio));
-
     newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
     newtio.c_iflag = IGNPAR;
     newtio.c_oflag = 0;
-
-    // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 30; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
+    newtio.c_cc[VTIME] = 30;
+    newtio.c_cc[VMIN] = 0;
 
-    // VTIME e VMIN should be changed in order to protect with a
-    // timeout the reception of the following character(s)
-
-    // Now clean the line and activate the settings for the port
-    // tcflush() discards data written to the object referred to
-    // by fd but not transmitted, or data received but not read,
-    // depending on the value of queue_selector:
-    //   TCIFLUSH - flushes data received but not read.
     tcflush(fd, TCIOFLUSH);
-
-    // Set new port settings
     if (tcsetattr(fd, TCSANOW, &newtio) == -1)
     {
         perror("tcsetattr");
-        exit(-1);
+        close(fd);
+        return -1;
     }
 
-    printf("New termios structure set\n");
+    unsigned char setFrame[5] = {FLAG, MY_ADRESS, C_SET, (MY_ADRESS ^ C_SET), FLAG};
+    if (write(fd, setFrame, 5) != 5)
+    {
+        perror("write SET");
+        close(fd);
+        return -1;
+    }
 
-    // Create string to send
-    unsigned char buf[8*BUF_SIZE + 1] = {0};
-    unsigned char buf2[8*BUF_SIZE + 1] = {0};
+    State state = SIGA;
+    unsigned char c;
+    int gotUA = 0;
+
+    while (!gotUA && read(fd, &c, 1) > 0)
+    {
+        switch (state)
+        {
+            case SIGA:
+                if (c == FLAG)
+                    state = FLAG_RCV;
+                break;
+            case FLAG_RCV:
+                if (c == NOT_MY_ADRESS)
+                    state = ADRESS;
+                else if (c == FLAG)
+                    state = FLAG_RCV;
+                else
+                    state = SIGA;
+                break;
+            case ADRESS:
+                if (c == C_UA)
+                    state = CONTROL;
+                else if (c == FLAG)
+                    state = FLAG_RCV;
+                else
+                    state = SIGA;
+                break;
+            case CONTROL:
+                if (c == (NOT_MY_ADRESS ^ C_UA))
+                    gotUA = 1;
+                else if (c == FLAG)
+                    state = FLAG_RCV;
+                else
+                    state = SIGA;
+                break;
+            default:
+                state = SIGA;
+                break;
+        }
+    }
+
+    if (!gotUA)
+    {
+        fprintf(stderr, "llopen: UA not received\n");
+        close(fd);
+        return -1;
+    }
+
+    printf("llopen: link established\n");
+    return fd;
+}
+
+int llwrite(int fd)
+{
+    unsigned char buf[8 * BUF_SIZE + 1] = {0};
     unsigned char pseudoBuf = 0;
-    
-    int insertionPos = 4; //posição atual onde se pode inserir novo pacote
-    int currenteSize = 5; //número atual de elementos "úteis"
-    
-    buf[0] = 0x7E;
-    buf[1] = 0x03;
-    buf[2] = 0x03;
+
+    int insertionPos = 4;
+    int currenteSize = 5;
+
+    buf[0] = FLAG;
+    buf[1] = MY_ADRESS;
+    buf[2] = MY_ADRESS;
     buf[3] = buf[1] ^ buf[2];
-    buf[4] = 0x7E;
-    
-    unsigned char packs[PACK_HOLDER_SIZE][2*PACK_SIZE] = {{0xA1, 0xA2, 0xA3, 0x7D, 0x7E, 0x7E, 0xA7, 0x7E, 0, 0, 0, 0, 0, 0, 0, 0},
-                                                          {0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0},
-                                                          {0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0, 0, 0, 0, 0, 0, 0, 0},
-                                                          {0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0, 0, 0, 0, 0, 0, 0, 0},
-                                                          {0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0, 0, 0, 0, 0, 0, 0, 0}};
+    buf[4] = FLAG;
+
+    unsigned char packs[PACK_HOLDER_SIZE][2 * PACK_SIZE] = {
+        {0xA1, 0xA2, 0xA3, ESC, FLAG, FLAG, 0xA7, FLAG, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0, 0, 0, 0, 0, 0, 0, 0}
+    };
 
     unsigned char packSizes[PACK_HOLDER_SIZE] = {0};
-        
-    unsigned int xor;
-    for (int i = 0; i<PACK_HOLDER_SIZE; i++)
+    unsigned int xor = 0;
+
+    for (int i = 0; i < PACK_HOLDER_SIZE; i++)
     {
-        if (!i)
-        {
-            xor = 0;
-        }
+        xor = calcular_xor(packs[i], xor, 2 * PACK_SIZE);
 
-        xor = calcular_xor(packs[i], xor, 2*PACK_SIZE); //XOR calculado antes de bytestuffing
-
-        int lastId = PACK_SIZE-1;
-        
-        for (int j = 0; j<2*PACK_SIZE; j)
+        int lastId = PACK_SIZE - 1;
+        for (int j = 0; j < 2 * PACK_SIZE;)
         {
             if (packs[i][j] == FLAG || packs[i][j] == ESC)
             {
                 memmove(&packs[i][j + 2], &packs[i][j + 1], lastId - j);
-
                 if (packs[i][j] == FLAG)
                 {
                     packs[i][j] = ESC;
@@ -194,192 +221,122 @@ int main(int argc, char *argv[])
                 {
                     packs[i][j + 1] = 0x5D;
                 }
-                lastId++; // cresce dentro da zona de zeros
-                j+=2;      // skip ao byte inserido
+                lastId++;
+                j += 2;
             }
-            else{
+            else
+            {
                 j++;
             }
         }
-        packSizes[i] = lastId+1;
 
+        packSizes[i] = lastId + 1;
         memmove(&buf[insertionPos + packSizes[i]], &buf[insertionPos], currenteSize - insertionPos);
         memcpy(&buf[insertionPos], packs[i], packSizes[i]);
         insertionPos += packSizes[i];
         currenteSize += packSizes[i];
-        if (i == PACK_HOLDER_SIZE-1)
+
+        if (i == PACK_HOLDER_SIZE - 1)
         {
             memmove(&buf[insertionPos + 1], &buf[insertionPos], currenteSize - insertionPos);
             memcpy(&buf[insertionPos], &xor, 1);
             insertionPos += 1;
             currenteSize += 1;
         }
-        //printf("%d\n", i);
     }
 
+    for (int i = 0; i < currenteSize; i++)
+        printf("buf[%d] = 0x%02X\n", i, buf[i]);
 
-
-
-
-    //for (int i = 0; i< buf)
-    for(int i = 0; i < currenteSize; i++){
-           printf("buf[%d] = 0x%02X\n", i, buf[i]);
-        }
-        
-        // In non-canonical mode, '\n' does not end the writing.
-        // Test this condition by placing a '\n' in the middle of the buffer.
-        // The whole buffer must be sent even with the '\n'.
-    
-    //buf[6] = '\n';
-        
-    for (int i=0; i< BUF_SIZE +1; i++)
-    {
-        buf2[i] = buf[i];
-    }
-    int bytes = write(fd, buf, BUF_SIZE);
+    int bytes = write(fd, buf, currenteSize);
     printf("%d bytes written\n", bytes);
 
-    // Wait until all bytes have been written to the serial port
-    sleep(1);
-
-    //UA
-    /*struct sigaction act = {0};
-    act.sa_handler = &alarmHandler;
-
-    if (sigaction(SIGALRM, &act, NULL) == -1)
-    {
-        perror("sigaction");
-        exit(1);
-    }*/
-
     State state = SIGA;
+    int gotAck = 0;
 
-    int readCounter = 0;
-    while (STOP == FALSE)
+    while (!gotAck && read(fd, &pseudoBuf, 1) > 0)
     {
-        //printf("WHILEEEEEE\n");
-
-        //readRead(fd, buf);
-        // Returns after 5 chars have been input    
-        printf("analyzing\n");
-
-        buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
-        if (readCounter >= 5)
+        switch (state)
         {
-            break;
+            case SIGA:
+                if (pseudoBuf == FLAG)
+                    state = FLAG_RCV;
+                break;
+            case FLAG_RCV:
+                if (pseudoBuf == MY_ADRESS)
+                    state = ADRESS;
+                else if (pseudoBuf == FLAG)
+                    state = FLAG_RCV;
+                else
+                    state = SIGA;
+                break;
+            case ADRESS:
+                if (pseudoBuf == C_UA)
+                    state = CONTROL;
+                else if (pseudoBuf == FLAG)
+                    state = FLAG_RCV;
+                else
+                    state = SIGA;
+                break;
+            case CONTROL:
+                if (pseudoBuf == (MY_ADRESS ^ C_UA))
+                    gotAck = 1;
+                else if (pseudoBuf == FLAG)
+                    state = FLAG_RCV;
+                else
+                    state = SIGA;
+                break;
+            default:
+                state = SIGA;
+                break;
         }
-        readCounter++;
-        if (read(fd, &pseudoBuf, 1) > 0)
-        {
-            //printf("IFFFFFFFF\n");
-            readCounter = 0;
-            if (readCounter > 0)
-                write(fd, buf, BUF_SIZE);
-            else
-            {
-                switch (state)
-                {
-                    case SIGA:
-                        printf("Comecei a ler\n");
-                        if (pseudoBuf == FLAG)
-                        {
-                            printf("Recebi flag inicial: 0x%02X\n", pseudoBuf);
-                            state = FLAG_RCV;
-                        }
-                        break;
-
-                    case FLAG_RCV:
-                        if (pseudoBuf == MY_ADRESS)
-                        {
-                            printf("recebi adress: 0x%02X\n", pseudoBuf);
-                            state = ADRESS;
-                        }
-                        else if ( pseudoBuf == FLAG)
-                            break;
-                        else
-                            state == SIGA;
-                        break;
-
-                    case ADRESS:
-                        if (pseudoBuf == C_UA)
-                        {
-                            printf("recebi o controlo: 0x%02X\n", pseudoBuf);
-                            state = CONTROL;
-                        }
-                        else if ( pseudoBuf == FLAG)
-                            state = FLAG_RCV;
-                        else
-                            state == SIGA;
-
-                        break;
-
-                    case CONTROL:
-                        if (pseudoBuf == (MY_ADRESS ^ C_UA))
-                        {
-                            state = LER_PAYLOAD;
-                            printf("Ingnorando o Payload: 0x%02X\n", pseudoBuf);
-                        }
-                        else if ( pseudoBuf == FLAG)
-                            state = FLAG_RCV;
-                        else
-                            state == SIGA;
-                        break;
-
-                    case LER_PAYLOAD:
-                        if (pseudoBuf == FLAG)
-                        {
-                            state = PAROU_CARAI;
-                        }
-                        else
-                            state = SIGA;
-                        break;
-
-                    case PAROU_CARAI:
-                        printf("Parou\n");
-                        state == SIGA;
-                        STOP = TRUE;
-                        printf("Hand mass age\n");
-                        //printf("Voltando ao início\n");
-                        break;
-                }
-            }
-        }
-
-
-
-
-        //DEBUG
-        // for(int i = 0; i < 5; i++){
-            // printf("var%d = 0x%02X\n", i, buf[i]);
-        // }
-        //printf(":%s:%d\n", buf, bytes);
-        //printf("var1 = 0x%02X\n", buf[1]);
-        //printf("var2 = 0x%02X\n", buf[2]);
-        
-        //UA
-        // if (buf2[1] == 0x01 && buf2[2] == 0x07)
-        //     printf("Mass age good recipt!\n");
-        // else
-        //     printf("bed mass age\n");
-
-        // STOP = TRUE;
-
-        //alarmHandler();
-
-
-        //if (buf[0] == 'z')
-        //    STOP = TRUE;
     }
-    printf("Cheguei ao fim\n");
-    sleep(1);
-    // Restore the old port settings
-    if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
+
+    if (!gotAck)
+    {
+        fprintf(stderr, "llwrite: ACK not received\n");
+        return -1;
+    }
+
+    printf("llwrite: ACK received\n");
+    return 0;
+}
+
+int llclose(int fd, struct termios *oldtio)
+{
+    if (tcsetattr(fd, TCSANOW, oldtio) == -1)
     {
         perror("tcsetattr");
-        exit(-1);
+        return -1;
     }
 
     close(fd);
+    printf("llclose: link closed\n");
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc < 2)
+    {
+        printf("Incorrect program usage\n"
+               "Usage: %s <SerialPort>\n"
+               "Example: %s /dev/ttyS1\n",
+               argv[0],
+               argv[0]);
+        return 1;
+    }
+
+    struct termios oldtio;
+    int fd = llopen(argv[1], &oldtio);
+    if (fd < 0)
+        return 1;
+
+    if (llwrite(fd) != 0)
+        fprintf(stderr, "llwrite failed\n");
+
+    if (llclose(fd, &oldtio) != 0)
+        fprintf(stderr, "llclose failed\n");
 
     return 0;
 }
