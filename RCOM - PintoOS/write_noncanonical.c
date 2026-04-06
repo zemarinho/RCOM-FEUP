@@ -23,6 +23,7 @@
 #define BUF_SIZE 256
 #define PACK_SIZE 64
 #define PACK_HOLDER_SIZE 64
+#define MAX_FILE_SIZE 100000
 
 #define FLAG 0x7E
 #define MY_ADRESS 0x03
@@ -30,6 +31,7 @@
 #define C_SET 0x03
 #define C_UA 0x07
 #define ESC 0x7D
+#define MAX_RETRIES 5
 
 typedef enum
 {
@@ -69,6 +71,7 @@ readRead(int fd, unsigned char *buf)
         }
     }
     STOP = TRUE;
+    return 0;
 
 }
 
@@ -105,7 +108,7 @@ int llopen(const char *serialPortName, struct termios *oldtio)
     newtio.c_iflag = IGNPAR;
     newtio.c_oflag = 0;
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 30;
+    newtio.c_cc[VTIME] = 60;
     newtio.c_cc[VMIN] = 0;
 
     tcflush(fd, TCIOFLUSH);
@@ -123,6 +126,7 @@ int llopen(const char *serialPortName, struct termios *oldtio)
         close(fd);
         return -1;
     }
+    printf("SET sent\n");
 
     State state = SIGA;
     unsigned char c;
@@ -173,89 +177,75 @@ int llopen(const char *serialPortName, struct termios *oldtio)
         return -1;
     }
 
+    printf("UA received\n");
     printf("llopen: link established\n");
     return fd;
 }
 
-int llwrite(int fd, const char packs[PACK_HOLDER_SIZE][2 * PACK_SIZE])
+
+int llwrite(int fd, const unsigned char *payload, int payloadLen, int seq)
 {
-    unsigned char buf[8 * BUF_SIZE + 1] = {0};
+    unsigned char buf[PACK_HOLDER_SIZE * PACK_SIZE * 2 + 20] = {0};
+    int insertionPos = 0;
     unsigned char pseudoBuf = 0;
 
-    int insertionPos = 4;
-    int currenteSize = 5;
+    unsigned char ctrl = seq & 1;
+    buf[insertionPos++] = FLAG;
+    buf[insertionPos++] = MY_ADRESS;
+    buf[insertionPos++] = ctrl;
+    buf[insertionPos++] = MY_ADRESS ^ ctrl;
 
-    buf[0] = FLAG;
-    buf[1] = MY_ADRESS;
-    buf[2] = MY_ADRESS;
-    buf[3] = buf[1] ^ buf[2];
-    buf[4] = FLAG;
-
-    // unsigned char packs[PACK_HOLDER_SIZE][2 * PACK_SIZE] = {
-    //     {0xA1, 0xA2, 0xA3, ESC, FLAG, FLAG, 0xA7, FLAG, 0, 0, 0, 0, 0, 0, 0, 0},
-    //     {0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0},
-    //     {0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0, 0, 0, 0, 0, 0, 0, 0},
-    //     {0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0, 0, 0, 0, 0, 0, 0, 0},
-    //     {0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0, 0, 0, 0, 0, 0, 0, 0}
-    // };
-
-    unsigned char packSizes[PACK_HOLDER_SIZE] = {0};
-    unsigned int xor = 0;
-
-    for (int i = 0; i < PACK_HOLDER_SIZE; i++)
+    unsigned char bcc2 = 0;
+    for (int i = 0; i < payloadLen; i++)
     {
-        xor = calcular_xor(packs[i], xor, 2 * PACK_SIZE);
-
-        int lastId = PACK_SIZE - 1;
-        for (int j = 0; j < 2 * PACK_SIZE;)
+        unsigned char byte = payload[i];
+        bcc2 ^= byte;
+        if (byte == FLAG || byte == ESC)
         {
-            if (packs[i][j] == FLAG || packs[i][j] == ESC)
-            {
-                memmove(&packs[i][j + 2], &packs[i][j + 1], lastId - j);
-                if (packs[i][j] == FLAG)
-                {
-                    packs[i][j] = ESC;
-                    packs[i][j + 1] = 0x5E;
-                }
-                else
-                {
-                    packs[i][j + 1] = 0x5D;
-                }
-                lastId++;
-                j += 2;
-            }
-            else
-            {
-                j++;
-            }
+            buf[insertionPos++] = ESC;
+            buf[insertionPos++] = byte ^ 0x20;
         }
-
-        packSizes[i] = lastId + 1;
-        memmove(&buf[insertionPos + packSizes[i]], &buf[insertionPos], currenteSize - insertionPos);
-        memcpy(&buf[insertionPos], packs[i], packSizes[i]);
-        insertionPos += packSizes[i];
-        currenteSize += packSizes[i];
-
-        if (i == PACK_HOLDER_SIZE - 1)
+        else
         {
-            memmove(&buf[insertionPos + 1], &buf[insertionPos], currenteSize - insertionPos);
-            memcpy(&buf[insertionPos], &xor, 1);
-            insertionPos += 1;
-            currenteSize += 1;
+            buf[insertionPos++] = byte;
         }
     }
 
-    for (int i = 0; i < currenteSize; i++)
-        printf("buf[%d] = 0x%02X\n", i, buf[i]);
+    if (bcc2 == FLAG || bcc2 == ESC)
+    {
+        buf[insertionPos++] = ESC;
+        buf[insertionPos++] = bcc2 ^ 0x20;
+    }
+    else
+    {
+        buf[insertionPos++] = bcc2;
+    }
 
-    int bytes = write(fd, buf, currenteSize);
-    printf("%d bytes written\n", bytes);
+    buf[insertionPos++] = FLAG;
 
+    int bytes = write(fd, buf, insertionPos);
+    if (bytes < 0)
+    {
+        perror("write");
+        return -1;
+    }
+
+    printf("packet sent seq=%d len=%d\n", ctrl, payloadLen);
+    unsigned char expectedAck = C_UA ^ ctrl;
     State state = SIGA;
     int gotAck = 0;
 
-    while (!gotAck && read(fd, &pseudoBuf, 1) > 0)
+    while (!gotAck)
     {
+        int count = read(fd, &pseudoBuf, 1);
+        if (count < 0)
+            return -1;
+        if (count == 0)
+        {
+            printf("waiting for ACK seq=%d\n", ctrl);
+            return -1;
+        }
+
         switch (state)
         {
             case SIGA:
@@ -263,7 +253,7 @@ int llwrite(int fd, const char packs[PACK_HOLDER_SIZE][2 * PACK_SIZE])
                     state = FLAG_RCV;
                 break;
             case FLAG_RCV:
-                if (pseudoBuf == MY_ADRESS)
+                if (pseudoBuf == NOT_MY_ADRESS)
                     state = ADRESS;
                 else if (pseudoBuf == FLAG)
                     state = FLAG_RCV;
@@ -271,7 +261,7 @@ int llwrite(int fd, const char packs[PACK_HOLDER_SIZE][2 * PACK_SIZE])
                     state = SIGA;
                 break;
             case ADRESS:
-                if (pseudoBuf == C_UA)
+                if (pseudoBuf == expectedAck)
                     state = CONTROL;
                 else if (pseudoBuf == FLAG)
                     state = FLAG_RCV;
@@ -279,7 +269,7 @@ int llwrite(int fd, const char packs[PACK_HOLDER_SIZE][2 * PACK_SIZE])
                     state = SIGA;
                 break;
             case CONTROL:
-                if (pseudoBuf == (MY_ADRESS ^ C_UA))
+                if (pseudoBuf == (NOT_MY_ADRESS ^ expectedAck))
                     gotAck = 1;
                 else if (pseudoBuf == FLAG)
                     state = FLAG_RCV;
@@ -292,13 +282,7 @@ int llwrite(int fd, const char packs[PACK_HOLDER_SIZE][2 * PACK_SIZE])
         }
     }
 
-    if (!gotAck)
-    {
-        fprintf(stderr, "llwrite: ACK not received\n");
-        return -1;
-    }
-
-    printf("llwrite: ACK received\n");
+    printf("ACK received seq=%d\n", ctrl);
     return 0;
 }
 
@@ -317,11 +301,11 @@ int llclose(int fd, struct termios *oldtio)
 
 int main(int argc, char *argv[])
 {
-    if (argc < 2)
+    if (argc < 3)
     {
         printf("Incorrect program usage\n"
-               "Usage: %s <SerialPort>\n"
-               "Example: %s /dev/ttyS1\n",
+               "Usage: %s <SerialPort> <ImageFile>\n"
+               "Example: %s /dev/ttyS1 image.gif\n",
                argv[0],
                argv[0]);
         return 1;
@@ -332,8 +316,69 @@ int main(int argc, char *argv[])
     if (fd < 0)
         return 1;
 
-    if (llwrite(fd, ) != 0)
-        fprintf(stderr, "llwrite failed\n");
+    // Read the entire .gif file
+    FILE *fp = fopen(argv[2], "rb");
+    if (!fp)
+    {
+        perror("fopen");
+        close(fd);
+        return 1;
+    }
+    fseek(fp, 0, SEEK_END);
+    long fileSize = ftell(fp);
+    rewind(fp);
+    if (fileSize > MAX_FILE_SIZE)
+    {
+        fileSize = MAX_FILE_SIZE;  // Truncate if too large
+    }
+    char fileData[MAX_FILE_SIZE];
+    fread(fileData, 1, fileSize, fp);
+    fclose(fp);
+
+    // Send file size first
+    int seq = 0;
+    int attempts = 0;
+    while (attempts < MAX_RETRIES)
+    {
+        printf("sending size packet seq=%d\n", seq);
+        if (llwrite(fd, (unsigned char *)&fileSize, sizeof(long), seq) == 0)
+            break;
+        attempts++;
+        printf("retry size packet seq=%d attempt=%d\n", seq, attempts + 1);
+        sleep(1);
+    }
+    if (attempts == MAX_RETRIES)
+    {
+        fprintf(stderr, "llwrite failed for size packet\n");
+        close(fd);
+        return 1;
+    }
+
+    // Send in chunks
+    int chunkSize = PACK_HOLDER_SIZE * PACK_SIZE;  // 4096 bytes of raw data
+    int numChunks = (fileSize + chunkSize - 1) / chunkSize;
+    for (int chunk = 0; chunk < numChunks; chunk++)
+    {
+        int start = chunk * chunkSize;
+        int toSend = (fileSize - start) > chunkSize ? chunkSize : (fileSize - start);
+        seq ^= 1;
+        attempts = 0;
+        while (attempts < MAX_RETRIES)
+        {
+            printf("sending chunk %d seq=%d len=%d\n", chunk, seq, toSend);
+            if (llwrite(fd, (unsigned char *)fileData + start, toSend, seq) == 0)
+                break;
+            attempts++;
+            printf("retry chunk %d seq=%d attempt=%d\n", chunk, seq, attempts + 1);
+            sleep(1);
+        }
+        if (attempts == MAX_RETRIES)
+        {
+            fprintf(stderr, "llwrite failed for chunk %d\n", chunk);
+            close(fd);
+            return 1;
+        }
+    }
 
     if (llclose(fd, &oldtio) != 0)
         fprintf(stderr, "llclose failed\n");
