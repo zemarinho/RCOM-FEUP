@@ -21,9 +21,9 @@
 #define TRUE 1
 
 #define BUF_SIZE 256
-#define PACK_SIZE 64
-#define PACK_HOLDER_SIZE 64
-#define MAX_FILE_SIZE 100000
+#define PACK_SIZE 32
+#define PACK_HOLDER_SIZE 32
+#define MAX_FILE_SIZE 1000000
 
 #define FLAG 0x7E
 #define MY_ADRESS 0x03
@@ -357,6 +357,8 @@ int main(int argc, char *argv[])
     // Send in chunks
     int chunkSize = PACK_HOLDER_SIZE * PACK_SIZE;  // 4096 bytes of raw data
     int numChunks = (fileSize + chunkSize - 1) / chunkSize;
+    int chunkchunk = 0;
+
     for (int chunk = 0; chunk < numChunks; chunk++)
     {
         int start = chunk * chunkSize;
@@ -367,7 +369,11 @@ int main(int argc, char *argv[])
         {
             printf("sending chunk %d seq=%d len=%d\n", chunk, seq, toSend);
             if (llwrite(fd, (unsigned char *)fileData + start, toSend, seq) == 0)
+            {
+                //////////////////////Progress Bar
+                chunkchunk += toSend;
                 break;
+            }
             attempts++;
             printf("retry chunk %d seq=%d attempt=%d\n", chunk, seq, attempts + 1);
             sleep(1);
@@ -378,8 +384,19 @@ int main(int argc, char *argv[])
             close(fd);
             return 1;
         }
-    }
+        printf("[");
+        for (int i = 0; i<chunkchunk/ (double)fileSize * 100; i++)
+        {
+            printf("X");
+        }
+        for (int i = 0; i<100-(chunkchunk/ (double)fileSize * 100); i++)
+        {
+            printf("_");
+        }
+        printf("]");
+        printf("progresso: %.2f%%\n",  chunkchunk/ (double)fileSize * 100);
 
+    }
     if (llclose(fd, &oldtio) != 0)
         fprintf(stderr, "llclose failed\n");
 
