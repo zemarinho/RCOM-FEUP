@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
+#include <time.h>
+#include <stdint.h>
 
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
@@ -39,6 +41,26 @@ typedef enum{
     C_RCV,
     DATA
 } receiverState;
+
+typedef struct {
+    uint64_t bytes_total;      // tudo (headers + payload)
+    uint64_t bytes_payload;    // só dados úteis
+    // uint64_t packets_sent;
+    uint64_t packets_received;
+    uint64_t retransmissions;
+
+    double total_time;         // tempo total medido
+    double total_latency;      // soma das latências
+    uint64_t latency_samples;  // nº amostras
+} metrics_t;
+
+metrics_t m = {0};
+
+double now_sec() {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec + t.tv_nsec * 1e-9;
+}
 
 int llopen(const char *serialPortName, struct termios *oldtio)
 {
@@ -278,6 +300,11 @@ int llread(int fd, unsigned char *dataBuffer)
                     printf("packet received seq=%d len=%d\n", seq, payloadLen);
                     memcpy(dataBuffer, frameData, payloadLen);
                     expectedSeq ^= 1;
+
+                    m.packets_received++;
+                    m.bytes_total += frameLen;
+                    m.bytes_payload += payloadLen;
+
                     return payloadLen;
                 }
                 else
@@ -292,6 +319,7 @@ int llread(int fd, unsigned char *dataBuffer)
                 }
                 break;
         }
+
     }
 
     return -1;
@@ -313,19 +341,22 @@ int llclose(int fd, struct termios *oldtio)
 
 int main(int argc, char *argv[])
 {
+    
+    //****************
     if (argc < 2)
     {
         printf("Incorrect program usage\n"
-               "Usage: %s <SerialPort>\n"
-               "Example: %s /dev/ttyS1\n",
-               argv[0],
-               argv[0]);
-        return 1;
-    }
-
-    struct termios oldtio;
-    int fd = llopen(argv[1], &oldtio);
-    unsigned char dataBuffer[8*BUF_SIZE + 1];
+            "Usage: %s <SerialPort>\n"
+            "Example: %s /dev/ttyS1\n",
+            argv[0],
+            argv[0]);
+            return 1;
+        }
+        
+        struct termios oldtio;
+        int fd = llopen(argv[1], &oldtio);
+        double t_start = now_sec();
+        unsigned char dataBuffer[8*BUF_SIZE + 1];
     if (fd < 0)
         return 1;
 
@@ -371,6 +402,17 @@ int main(int argc, char *argv[])
         int toCopy = (fileSize - totalReceived) > bytesRead ? bytesRead : (fileSize - totalReceived);
         memcpy(receivedData + totalReceived, dataBuffer, toCopy);
         totalReceived += toCopy;
+        printf("[");
+        for (int i = 0; i<totalReceived/ (double)fileSize * 50; i++)
+        {
+            printf("X");
+        }
+        for (int i = 0; i<50-(totalReceived/ (double)fileSize * 50); i++)
+        {
+            printf("_");
+        }
+        printf("]");
+        printf("progresso: %.2f%%\n",  totalReceived/ (double)fileSize * 100);
     }
 
     printf("Receiving finished, writing %d of %ld bytes to recebido.gif\n", totalReceived, fileSize);
@@ -390,6 +432,24 @@ int main(int argc, char *argv[])
 
     if (llclose(fd, &oldtio) != 0)
         fprintf(stderr, "llclose failed\n");
+
+
+    //*********************
+    double t_end = now_sec();
+    m.total_time = t_end - t_start;
+
+    double throughput = m.bytes_total / m.total_time;
+    double goodput   = m.bytes_payload / m.total_time;
+    // double avg_lat   = m.total_latency / m.latency_samples;
+    double efficiency = (double)m.bytes_payload / m.bytes_total;
+
+    printf("STATS---------------------------------------------\n");
+    printf("Time: %.2fs\n", m.total_time);
+    printf("Throughput: %.2f B/s\n", throughput);
+    printf("Goodput: %.2f B/s\n", goodput);
+    // printf("Latência média: %.6f s\n", avg_lat);
+    printf("Eficiência: %.2f\n", efficiency);
+    // printf("Retransmissões: %lu\n", m.retransmissions);
 
     return 0;
 }

@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
+#include <time.h>
+#include <stdint.h>
 //#include <signal.h>
 
 // Baudrate settings are defined in <asm/termbits.h>, which is
@@ -43,6 +45,26 @@ typedef enum
     PAROU_CARAI
     
 } State;
+
+typedef struct {
+    uint64_t bytes_total;      // tudo (headers + payload)
+    uint64_t bytes_payload;    // só dados úteis
+    uint64_t packets_sent;
+    // uint64_t packets_received;
+    uint64_t retransmissions;
+
+    double total_time;         // tempo total medido
+    double total_latency;      // soma das latências
+    uint64_t latency_samples;  // nº amostras
+} metrics_t;
+
+metrics_t m = {0};
+
+double now_sec() {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec + t.tv_nsec * 1e-9;
+}
 
 volatile int STOP = FALSE;
 
@@ -185,16 +207,17 @@ int llopen(const char *serialPortName, struct termios *oldtio)
 
 int llwrite(int fd, const unsigned char *payload, int payloadLen, int seq)
 {
+    
     unsigned char buf[PACK_HOLDER_SIZE * PACK_SIZE * 2 + 20] = {0};
     int insertionPos = 0;
     unsigned char pseudoBuf = 0;
-
+    
     unsigned char ctrl = seq & 1;
     buf[insertionPos++] = FLAG;
     buf[insertionPos++] = MY_ADRESS;
     buf[insertionPos++] = ctrl;
     buf[insertionPos++] = MY_ADRESS ^ ctrl;
-
+    
     unsigned char bcc2 = 0;
     for (int i = 0; i < payloadLen; i++)
     {
@@ -210,7 +233,7 @@ int llwrite(int fd, const unsigned char *payload, int payloadLen, int seq)
             buf[insertionPos++] = byte;
         }
     }
-
+    
     if (bcc2 == FLAG || bcc2 == ESC)
     {
         buf[insertionPos++] = ESC;
@@ -220,8 +243,12 @@ int llwrite(int fd, const unsigned char *payload, int payloadLen, int seq)
     {
         buf[insertionPos++] = bcc2;
     }
-
+    
     buf[insertionPos++] = FLAG;
+    
+    m.packets_sent++;
+    m.bytes_total += insertionPos;
+    m.bytes_payload += payloadLen;
 
     int bytes = write(fd, buf, insertionPos);
     if (bytes < 0)
@@ -301,18 +328,21 @@ int llclose(int fd, struct termios *oldtio)
 
 int main(int argc, char *argv[])
 {
+    
+    //************************
     if (argc < 3)
     {
         printf("Incorrect program usage\n"
-               "Usage: %s <SerialPort> <ImageFile>\n"
-               "Example: %s /dev/ttyS1 image.gif\n",
-               argv[0],
-               argv[0]);
-        return 1;
-    }
-
-    struct termios oldtio;
-    int fd = llopen(argv[1], &oldtio);
+            "Usage: %s <SerialPort> <ImageFile>\n"
+            "Example: %s /dev/ttyS1 image.gif\n",
+            argv[0],
+            argv[0]);
+            return 1;
+        }
+        
+        struct termios oldtio;
+        int fd = llopen(argv[1], &oldtio);
+        double t_start = now_sec();
     if (fd < 0)
         return 1;
 
@@ -385,11 +415,11 @@ int main(int argc, char *argv[])
             return 1;
         }
         printf("[");
-        for (int i = 0; i<chunkchunk/ (double)fileSize * 100; i++)
+        for (int i = 0; i<chunkchunk/ (double)fileSize * 50; i++)
         {
             printf("X");
         }
-        for (int i = 0; i<100-(chunkchunk/ (double)fileSize * 100); i++)
+        for (int i = 0; i<50-(chunkchunk/ (double)fileSize * 50); i++)
         {
             printf("_");
         }
@@ -400,5 +430,22 @@ int main(int argc, char *argv[])
     if (llclose(fd, &oldtio) != 0)
         fprintf(stderr, "llclose failed\n");
 
+    //*******************
+
+    double t_end = now_sec();
+    m.total_time = t_end - t_start;
+
+    double throughput = m.bytes_total / m.total_time;
+    double goodput   = m.bytes_payload / m.total_time;
+    // double avg_lat   = m.total_latency / m.latency_samples;
+    double efficiency = (double)m.bytes_payload / m.bytes_total;
+
+    printf("STATS---------------------------------------------\n");
+    printf("Time: %.2fs\n", m.total_time);
+    printf("Throughput: %.2f B/s\n", throughput);
+    printf("Goodput: %.2f B/s\n", goodput);
+    // printf("Latência média: %.6f s\n", avg_lat);
+    printf("Eficiência: %.2f\n", efficiency);
+    // printf("Retransmissões: %lu\n", m.retransmissions);
     return 0;
 }
