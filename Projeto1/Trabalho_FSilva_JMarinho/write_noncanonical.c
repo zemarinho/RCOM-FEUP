@@ -23,8 +23,8 @@
 #define TRUE 1
 
 #define BUF_SIZE 256
-#define PACK_SIZE 32
-#define PACK_HOLDER_SIZE 32
+#define PACK_SIZE 256
+#define PACK_HOLDER_SIZE 256
 #define MAX_FILE_SIZE 1000000
 
 #define FLAG 0x7E
@@ -342,7 +342,6 @@ int main(int argc, char *argv[])
         
         struct termios oldtio;
         int fd = llopen(argv[1], &oldtio);
-        double t_start = now_sec();
     if (fd < 0)
         return 1;
 
@@ -368,6 +367,7 @@ int main(int argc, char *argv[])
     // Send file size first
     int seq = 0;
     int attempts = 0;
+    double t_start = now_sec();
     while (attempts < MAX_RETRIES)
     {
         printf("sending size packet seq=%d\n", seq);

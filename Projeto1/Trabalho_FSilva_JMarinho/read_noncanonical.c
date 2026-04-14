@@ -21,7 +21,7 @@
 #define FALSE 0
 #define TRUE 1
 
-#define BUF_SIZE 1024
+#define BUF_SIZE 262144
 #define MAX_FILE_SIZE 100000
 #define MAX_IDLE_READS 10
 
@@ -415,6 +415,7 @@ int main(int argc, char *argv[])
         printf("]");
         printf("progresso: %.2f%%\n",  totalReceived/ (double)fileSize * 100);
     }
+    t_end = now_sec();
 
     printf("Receiving finished, writing %d of %ld bytes to recebido.gif\n", totalReceived, fileSize);
     // Write the received data to a .gif file
@@ -422,7 +423,6 @@ int main(int argc, char *argv[])
     if (fp)
     {
         fwrite(receivedData, 1, totalReceived, fp);
-        t_end = now_sec();
         fclose(fp);
         printf("File written: recebido.gif (%d bytes)\n", totalReceived);
     }
