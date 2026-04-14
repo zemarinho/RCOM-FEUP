@@ -350,15 +350,16 @@ int main(int argc, char *argv[])
             "Example: %s /dev/ttyS1\n",
             argv[0],
             argv[0]);
-            return 1;
-        }
+        return 1;
+    }
         
-        struct termios oldtio;
-        int fd = llopen(argv[1], &oldtio);
-        double t_start = now_sec();
-        unsigned char dataBuffer[8*BUF_SIZE + 1];
+    struct termios oldtio;
+    int fd = llopen(argv[1], &oldtio);
     if (fd < 0)
         return 1;
+    double t_end = 0;
+    double t_start = now_sec();
+    unsigned char dataBuffer[8*BUF_SIZE + 1];
 
     // Receive file size first
     long fileSize;
@@ -405,23 +406,23 @@ int main(int argc, char *argv[])
         printf("[");
         for (int i = 0; i<totalReceived/ (double)fileSize * 50; i++)
         {
-            printf("X");
+            printf("|");
         }
         for (int i = 0; i<50-(totalReceived/ (double)fileSize * 50); i++)
         {
-            printf("_");
+            printf(" ");
         }
         printf("]");
         printf("progresso: %.2f%%\n",  totalReceived/ (double)fileSize * 100);
     }
 
     printf("Receiving finished, writing %d of %ld bytes to recebido.gif\n", totalReceived, fileSize);
-
     // Write the received data to a .gif file
     FILE *fp = fopen("recebido.gif", "wb");
     if (fp)
     {
         fwrite(receivedData, 1, totalReceived, fp);
+        t_end = now_sec();
         fclose(fp);
         printf("File written: recebido.gif (%d bytes)\n", totalReceived);
     }
@@ -430,12 +431,13 @@ int main(int argc, char *argv[])
         perror("fopen");
     }
 
+    sleep(1);
+
     if (llclose(fd, &oldtio) != 0)
         fprintf(stderr, "llclose failed\n");
 
 
     //*********************
-    double t_end = now_sec();
     m.total_time = t_end - t_start;
 
     double throughput = m.bytes_total / m.total_time;
