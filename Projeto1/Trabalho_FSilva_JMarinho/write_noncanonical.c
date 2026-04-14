@@ -23,8 +23,8 @@
 #define TRUE 1
 
 #define BUF_SIZE 256
-#define PACK_SIZE 256
-#define PACK_HOLDER_SIZE 256
+#define PACK_SIZE 32
+#define PACK_HOLDER_SIZE 32
 #define MAX_FILE_SIZE 1000000
 
 #define FLAG 0x7E
