@@ -17,14 +17,16 @@
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
 #define BAUDRATE B38400
+#define LINK_SPEED 38400  // bits por segundo
+
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
 #define FALSE 0
 #define TRUE 1
 
 #define BUF_SIZE 256
-#define PACK_SIZE 32
-#define PACK_HOLDER_SIZE 32
+#define PACK_SIZE 2
+#define PACK_HOLDER_SIZE 2
 #define MAX_FILE_SIZE 1000000
 
 #define FLAG 0x7E
@@ -59,6 +61,34 @@ typedef struct {
 } metrics_t;
 
 metrics_t m = {0};
+
+
+// chama isto uma vez no início (ex: main)
+void initRandom() {
+    srand(time(NULL));
+}
+
+// FER = Frame Error Rate (0.0 → 1.0)
+void randomNoise(unsigned char *bcc1, unsigned char *bcc2)
+{
+    const double FER = 0.0; // probabilidade de erro (0 a 1, resolução 0.001 é suficiente)
+
+    double r = (double)rand() / (double)RAND_MAX; // [0,1)
+
+    if (r < FER)
+    {
+        if (rand() % 2)
+        {
+            *bcc1 ^= (1 << (rand() % 8));
+        }
+        else
+        {
+            *bcc2 ^= (1 << (rand() % 8));
+        }
+    }
+}
+
+
 
 double now_sec() {
     struct timespec t;
@@ -211,14 +241,19 @@ int llwrite(int fd, const unsigned char *payload, int payloadLen, int seq)
     unsigned char buf[PACK_HOLDER_SIZE * PACK_SIZE * 2 + 20] = {0};
     int insertionPos = 0;
     unsigned char pseudoBuf = 0;
-    
     unsigned char ctrl = seq & 1;
+    unsigned char bcc1 = MY_ADRESS ^ ctrl;
+    unsigned char bcc2 = 0;
+
+    
+    
+    
     buf[insertionPos++] = FLAG;
     buf[insertionPos++] = MY_ADRESS;
     buf[insertionPos++] = ctrl;
-    buf[insertionPos++] = MY_ADRESS ^ ctrl;
+    int id1 = insertionPos;
+    buf[insertionPos++] = bcc1;
     
-    unsigned char bcc2 = 0;
     for (int i = 0; i < payloadLen; i++)
     {
         unsigned char byte = payload[i];
@@ -234,6 +269,9 @@ int llwrite(int fd, const unsigned char *payload, int payloadLen, int seq)
         }
     }
     
+    randomNoise(&bcc1, &bcc2);
+    buf[id1] = bcc1;
+
     if (bcc2 == FLAG || bcc2 == ESC)
     {
         buf[insertionPos++] = ESC;
@@ -328,7 +366,7 @@ int llclose(int fd, struct termios *oldtio)
 
 int main(int argc, char *argv[])
 {
-    
+    initRandom();
     //************************
     if (argc < 3)
     {
@@ -438,14 +476,14 @@ int main(int argc, char *argv[])
     double throughput = m.bytes_total / m.total_time;
     double goodput   = m.bytes_payload / m.total_time;
     // double avg_lat   = m.total_latency / m.latency_samples;
-    double efficiency = (double)m.bytes_payload / m.bytes_total;
+    double efficiency = goodput*8/LINK_SPEED;
 
     printf("STATS---------------------------------------------\n");
-    printf("Time: %.2fs\n", m.total_time);
+    printf("Time: %.5fs\n", m.total_time);
     printf("Throughput: %.2f B/s\n", throughput);
     printf("Goodput: %.2f B/s\n", goodput);
     // printf("Latência média: %.6f s\n", avg_lat);
-    printf("Eficiência: %.2f\n", efficiency);
+    printf("S: %.2f%%\n", efficiency*100);
     // printf("Retransmissões: %lu\n", m.retransmissions);
     return 0;
 }

@@ -16,6 +16,7 @@
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
 #define BAUDRATE B38400
+#define LINK_SPEED 38400
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
 #define FALSE 0
@@ -443,14 +444,14 @@ int main(int argc, char *argv[])
     double throughput = m.bytes_total / m.total_time;
     double goodput   = m.bytes_payload / m.total_time;
     // double avg_lat   = m.total_latency / m.latency_samples;
-    double efficiency = (double)m.bytes_payload / m.bytes_total;
+    double efficiency = goodput*8/LINK_SPEED;
 
     printf("STATS---------------------------------------------\n");
     printf("Time: %.2fs\n", m.total_time);
     printf("Throughput: %.2f B/s\n", throughput);
     printf("Goodput: %.2f B/s\n", goodput);
     // printf("Latência média: %.6f s\n", avg_lat);
-    printf("Eficiência: %.2f\n", efficiency);
+    printf("Eficiência: %.2f%%\n", efficiency*100);
     // printf("Retransmissões: %lu\n", m.retransmissions);
 
     return 0;
