@@ -1,0 +1,18 @@
+comandos a partir do root:
+$sudo su root
+
+
+IP's
+
+    - tux3 172.16.120.1/24
+    - tux4 172.16.120.254/24
+
+MAC's
+
+    -tux3
+        . if_e1 -> ec:75:0c:c2:3c:75
+        . if_e2 -> ec:75:0c:c2:10:6b
+    
+    -tux4
+        . if_e1 -> ec:75:0c:c2:3c:ac
+        . if_e2 -> ec:75:0c:c2:26:81
