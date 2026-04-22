@@ -60,4 +60,11 @@
 ### Porque é importante
 
     Com isto é possível que diferentes serviços ou aplicações a correr no mesmo computador comuniquem entre si utilizando protocolos de redes standart
+<<<<<<< HEAD
     
+=======
+
+# haha
+
+    eu mesmo
+>>>>>>> 3abf45c57692f1fb6b1a8ad07e4277570b81d6c4
