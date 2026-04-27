@@ -1,22 +1,9 @@
-#!/usr/bin/expect -f
+#!/bin/expect
 
 set timeout 5
 
 spawn screen /dev/ttyS0 115200
 
-expect {
-    -re ".*Login:.*" {}
-    timeout { exit 1 }
-}
-
-send "admin\r"
-
-expect {
-    -re ".*Password:.*" {}
-    timeout { exit 1 }
-}
-
-send "\r"
 
 expect {
     -re ".*>.*" {}
@@ -37,6 +24,19 @@ expect {
     timeout { exit 1 }
 }
 
+expect {
+    -re ".*Login:.*" {}
+    timeout { exit 1 }
+}
+
+send "admin\r"
+
+expect {
+    -re ".*Password:.*" {}
+    timeout { exit 1 }
+}
+
+send "\r"
 # fechar comunicação completamente
 close
 wait
