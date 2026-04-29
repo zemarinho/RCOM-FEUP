@@ -20,7 +20,7 @@
     Tux3:
         - IP: 172.16.120.1
         - MAC: ec:75:0c:c2:3c:75
-    
+
     Tux4:
         - IP: 172.16.120.254
         - MAC: ec:75:0c:c2:3c:ac
@@ -38,7 +38,7 @@
     Tux3:
         - IP: 172.16.120.1
         - MAC: ec:75:0c:c2:3c:75
-    
+
     Tux4:
         - IP: 172.16.120.254
         - MAC: ec:75:0c:c2:3c:ac
@@ -60,3 +60,21 @@
 ### Porque é importante
 
     Com isto é possível que diferentes serviços ou aplicações a correr no mesmo computador comuniquem entre si utilizando protocolos de redes standart
+
+# Exp 2 - Implement two bridges in a switch
+
+## How to configure bridgeY0?
+
+    No MTKterm:
+    - /interface bridge add name=bridgeY0
+    - /interface bridge port remove [find interface =ether1]
+    - /interface bridge port add bridge=bridgeY0 interface=ether1.
+
+## How many broadcast domains are there?
+
+    2
+
+## How can you conclude it from the logs?
+
+    Ao fazer broadcast a aprtir do tux3 apenas o tux 4 ouve
+    Ao fazer broadcast a partir do tux2 mais nenhum tux ouve
