@@ -1,43 +1,21 @@
-#!/bin/expect
+No GTKTerm
 
-set timeout 5
+dev/ttyS0 115200
 
-spawn screen /dev/ttyS0 115200
+$system reset-configuration
+
+user: admin
+pass: [blank]
 
 
-expect {
-    -re ".*>.*" {}
-    timeout { exit 1 }
-}
+Criar Bridge:
+    interface bridge add name=[bridge_name]
 
-send "system reset-configuration\r"
+Remover portas para adicionar à bridge desejada:
+    interface bridge port remove [find interface =[PORT]]
 
-expect {
-    -re ".*Do you want to continue.*" {}
-    timeout { exit 1 }
-}
+Adicionar as portas à bridge:
+    interfate bridge port add bridge=[bridge_name] interface=[PORT]
 
-send "y\r"
-
-expect {
-    -re ".*Press any key.*" {}
-    timeout { exit 1 }
-}
-
-expect {
-    -re ".*Login:.*" {}
-    timeout { exit 1 }
-}
-
-send "admin\r"
-
-expect {
-    -re ".*Password:.*" {}
-    timeout { exit 1 }
-}
-
-send "\r"
-# fechar comunicação completamente
-close
-wait
-exit 0
+Imprimir as ligações entre bridges e portas:
+    interface bridge port print
