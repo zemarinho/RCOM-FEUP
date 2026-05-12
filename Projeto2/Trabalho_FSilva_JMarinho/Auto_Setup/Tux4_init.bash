@@ -9,3 +9,7 @@ ifconfig if_e2 172.16.121.253/24
 sysctl net.ipv4.ip_forward=1
  
 sysctl net.ipv4.icmp_echo_ignore_broadcasts=0
+
+iptables -P FORWARD ACCEPT
+
+iptables -F FORWARD

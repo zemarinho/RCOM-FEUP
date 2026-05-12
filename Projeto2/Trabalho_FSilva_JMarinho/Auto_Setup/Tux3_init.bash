@@ -3,3 +3,9 @@
 systemctl restart networking
 
 ifconfig if_e1 172.16.120.1/24
+
+iptables -P FORWARD ACCEPT
+
+iptables -F FORWARD
+
+route add -net 172.16.121.0/24 gw 172.16.120.254
