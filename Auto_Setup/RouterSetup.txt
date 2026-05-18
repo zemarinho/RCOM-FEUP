@@ -1,0 +1,25 @@
+No GTKTerm
+
+/dev/ttyS0 115200
+
+Reset:
+    /system reset-configuration
+
+user: admin
+pass: [blank]
+
+Add Network Interface:
+    /ip address add address=172.16.1.Y9/24 interface=ether1
+Show Network Interface:
+    /ip address print
+
+Add Routes:
+    /ip route add dst-address=172.16.10.0/24 gateway=172.16.11.253
+Show Routes:
+    /ip route print
+
+---------------------------------------------------------------------
+/system reset-configuration
+/ip address add address=172.16.1.121/24 interface=ether1
+/ip address add address=172.16.121.254/24 interface=ether2
+/ip route add dst-address=172.16.120.0/24 gateway=172.16.121.253
