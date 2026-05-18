@@ -1,12 +1,12 @@
 No GTKTerm
 
-dev/ttyS0 115200
+/dev/ttyS0 115200
 
-$system reset-configuration
+Reset:
+    system reset-configuration
 
 user: admin
 pass: [blank]
-
 
 Criar Bridge:
     interface bridge add name=[bridge_name]
@@ -19,3 +19,5 @@ Adicionar as portas à bridge:
 
 Imprimir as ligações entre bridges e portas:
     interface bridge port print
+
+---------------------------------------------------------------------

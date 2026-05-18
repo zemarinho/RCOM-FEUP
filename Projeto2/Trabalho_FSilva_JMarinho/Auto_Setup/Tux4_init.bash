@@ -13,3 +13,5 @@ sysctl net.ipv4.icmp_echo_ignore_broadcasts=0
 iptables -P FORWARD ACCEPT
 
 iptables -F FORWARD
+
+route add -net 172.16.1.0/24 gw 172.16.121.254
