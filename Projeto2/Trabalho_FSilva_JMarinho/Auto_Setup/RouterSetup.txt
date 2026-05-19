@@ -9,12 +9,12 @@ user: admin
 pass: [blank]
 
 Add Network Interface:
-    /ip address add address=172.16.1.Y9/24 interface=ether1
+    /ip address add address=172.16.1.Y1/24 interface=ether1
 Show Network Interface:
     /ip address print
 
 Add Routes:
-    /ip route add dst-address=172.16.10.0/24 gateway=172.16.11.253
+    /ip route add dst-address=172.16.1.0/24 gateway=172.16.121.253
 Show Routes:
     /ip route print
 
@@ -22,4 +22,4 @@ Show Routes:
 /system reset-configuration
 /ip address add address=172.16.1.121/24 interface=ether1
 /ip address add address=172.16.121.254/24 interface=ether2
-/ip route add dst-address=172.16.120.0/24 gateway=172.16.121.253
+/ip route add dst-address=0.0.0.0/0 gateway=172.16.1.254
