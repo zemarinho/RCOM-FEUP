@@ -1,0 +1,4 @@
+3 pinga tudo exceto server
+4 pinga tudo
+2 pinga tudo
+router pinga tudo

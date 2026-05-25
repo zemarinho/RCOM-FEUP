@@ -1,0 +1,36 @@
+On GTKTerm
+
+/dev/ttyS0 115200
+
+Reset:
+    /system reset-configuration
+
+user: admin
+pass: [blank]
+
+Add network interface:
+    /ip address add address=172.16.1.Y1/24 interface=ether1
+Show network interface:
+    /ip address print
+
+Add routes:
+    /ip route add dst-address=172.16.1.0/24 gateway=172.16.121.253
+Show routes:
+    /ip route print
+
+---------------------------------------------------------------------
+
+# reset
+/system reset-configuration
+
+# add addresses
+    # on FTP Server
+/ip address add address=172.16.1.121/24 interface=ether1
+    # on bridge121
+/ip address add address=172.16.121.254/24 interface=ether2
+
+# add routes
+    # default (through Router)
+/ip route add dst-address=0.0.0.0/0 gateway=172.16.1.254
+    # to bridge120 through Tux124E2
+/ip route add dst-address=172.16.120.0/24 gateway=172.16.121.253
