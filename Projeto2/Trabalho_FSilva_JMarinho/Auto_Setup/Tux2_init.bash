@@ -14,5 +14,5 @@ route add -net 172.16.120.0/24 gw 172.16.121.253
     # to FTP Server through Router
 route add -net 172.16.1.0/24 gw 172.16.121.254
 
-sysctl net.ipv4.conf.eth1.accept_redirects=0
+sysctl net.ipv4.conf.if_e1.accept_redirects=0
 sysctl net.ipv4.conf.all.accept_redirects=0
