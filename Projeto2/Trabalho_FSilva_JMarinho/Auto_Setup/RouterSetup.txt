@@ -18,6 +18,9 @@ Add routes:
 Show routes:
     /ip route print
 
+Disable NAT:
+/ip firewall nat disable 0
+
 ---------------------------------------------------------------------
 
 # reset
