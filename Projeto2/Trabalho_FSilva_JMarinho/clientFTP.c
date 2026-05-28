@@ -22,6 +22,7 @@
 #include <netinet/in.h>     // Para estruturas de endereços de rede (sockaddr_in, htons, etc.)
 #include <arpa/inet.h>      // Para conversão de endereços (inet_pton, etc.)
 #include <netdb.h>          // Para DNS (gethostbyname, herror, etc.)
+#include <ctype.h>
 
 // ===== CONSTANTES =====
 #define DEFAULT_FTP_PORT "21"  // Porta padrão do FTP é a 21

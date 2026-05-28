@@ -1,23 +1,44 @@
-No GTKTerm
+On GTKTerm
 
 /dev/ttyS0 115200
 
 Reset:
-    system reset-configuration
+    /system reset-configuration
 
 user: admin
 pass: [blank]
 
-Criar Bridge:
+Create bridge:
     interface bridge add name=[bridge_name]
 
-Remover portas para adicionar à bridge desejada:
-    interface bridge port remove [find interface =[PORT]]
+Remove ports from bridge:
+    interface bridge port remove [find interface=[PORT]]
 
-Adicionar as portas à bridge:
-    interfate bridge port add bridge=[bridge_name] interface=[PORT]
+Add ports to bridge:
+    interface bridge port add bridge=[bridge_name] interface=[PORT]
 
-Imprimir as ligações entre bridges e portas:
+Show bridges and ports:
     interface bridge port print
 
 ---------------------------------------------------------------------
+
+# reset
+/system reset-configuration
+
+# remover ports default
+/interface bridge port remove [find interface=ether8]
+/interface bridge port remove [find interface=ether16]
+/interface bridge port remove [find interface=ether21]
+/interface bridge port remove [find interface=ether23]
+/interface bridge port remove [find interface=ether24]
+
+# criar bridges e ports
+    # bridge120
+/interface bridge add name=bridge120
+/interface bridge port add bridge=bridge120 interface=ether16   # Tux123E1
+/interface bridge port add bridge=bridge120 interface=ether24   # Tux124E1
+    # bridge121
+/interface bridge add name=bridge121
+/interface bridge port add bridge=bridge120 interface=ether8    # Tux122E1
+/interface bridge port add bridge=bridge120 interface=ether23   # Tux124E2
+/interface bridge port add bridge=bridge120 interface=ether21   # Router

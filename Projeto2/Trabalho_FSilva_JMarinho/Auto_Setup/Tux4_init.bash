@@ -14,4 +14,5 @@ iptables -P FORWARD ACCEPT
 
 iptables -F FORWARD
 
+# add route to FTP Server through Router
 route add -net 172.16.1.0/24 gw 172.16.121.254
