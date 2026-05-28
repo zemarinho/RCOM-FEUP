@@ -42,3 +42,6 @@ Show bridges and ports:
 /interface bridge port add bridge=bridge120 interface=ether8    # Tux122E1
 /interface bridge port add bridge=bridge120 interface=ether23   # Tux124E2
 /interface bridge port add bridge=bridge120 interface=ether21   # Router
+
+
+teste
