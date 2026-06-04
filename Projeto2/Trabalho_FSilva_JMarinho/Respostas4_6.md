@@ -41,3 +41,25 @@
 
     O tux3 envia o ping mas não obtém resposta porque o servidor FTP não sabe como aceder à rede do tux3 sem a NAT para lhe mascarar o IP com o do router
     Para a comunicação poder funcionar sem a NAT seria necessário configurar uma rota no servidor FTP que usasse a interface pública do router como gateway para aceber à rede do tux3
+
+# Exp 5 - DNS
+
+## How to configure the DNS service in a host?
+
+    Editar o ficheiro /etc/resolv.conf para conter:
+        "nameserver [IP_do_servidor_DNS]"
+
+## What packets are exchanged by DNS and what information is transported?
+
+    São trocados pacotes DNS entre o cliente e o servidor que transportam:
+        -endereço IPV4 e IPV6 associados a "google.com"
+        -o cliente pergunta qual é o nome associado ao IP 142.250.181.174 e o servidor responde
+
+# Exp 6 - TCP connections
+
+## How many TCP connections are opened by your FTP application?
+
+    São abertas duas conexões TCP
+
+## In what connection is transported the FTP control information?
+
